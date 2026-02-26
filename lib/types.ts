@@ -1,0 +1,296 @@
+export interface TeamMember {
+    id: string;
+    name: string;
+    initials: string;
+    role: string;
+    avatar_color: string;
+    status: 'online' | 'away' | 'offline';
+    email: string;
+    permission: 'admin' | 'member' | 'viewer';
+    category?: string; // Administrativa, Financeira, Operacional, Comercial, Jurídica
+    avatar_url?: string;
+    allowed_modules?: string[];
+    initial_password?: string;
+    created_at?: string;
+}
+
+export interface Contact {
+    id: string;
+    name: string;
+    email: string;
+    company: string;
+    phone: string;
+    status: 'active' | 'pending' | 'inactive';
+    value: number;
+    avatar_color: string;
+    last_contact: string;
+    created_at?: string;
+}
+
+export interface Deal {
+    id: string;
+    title: string;
+    company: string;
+    value: number;
+    stage: 'prospeccao' | 'diagnostico' | 'proposta_comercial' | 'fechado' | 'perdido';
+    assignee: string;
+    assignee_color: string;
+    date: string;
+    probability: number;
+    origem?: string;
+    fechamento_previsto?: string;
+    motivo_perda?: string;
+    observacoes?: string;
+    data_entrada_etapa?: string;
+    created_at?: string;
+}
+
+export interface Task {
+    id: string;
+    title: string;
+    description: string;
+    status: 'backlog' | 'progress' | 'review' | 'done';
+    priority: 'high' | 'medium' | 'low';
+    label: 'feature' | 'bug' | 'improvement' | 'design' | 'urgent';
+    assignee: string;
+    assignee_color: string;
+    deadline: string;
+    comments: number;
+    attachments: number;
+    project: string;
+    created_at?: string;
+}
+
+export interface Channel {
+    id: string;
+    name: string;
+    description: string;
+    unread: number;
+    created_at?: string;
+}
+
+export interface ChatMessage {
+    id: string;
+    channel_id: string;
+    author: string;
+    avatar_color: string;
+    text: string;
+    time: string;
+    created_at?: string;
+}
+
+export interface FinancialData {
+    id: string;
+    month: string;
+    receita: number;
+    custos: number;
+    despesas: number;
+    lucro_bruto: number;
+    lucro_liquido: number;
+    sort_order: number;
+    created_at?: string;
+}
+
+export interface ExpenseCategory {
+    id: string;
+    name: string;
+    value: number;
+    color: string;
+    created_at?: string;
+}
+
+export interface FinancialTransaction {
+    id: string;
+    descricao: string;
+    tipo: 'entrada' | 'saida';
+    valor: number;
+    data_vencimento: string;
+    data_pagamento: string | null;
+    status: 'pendente' | 'pago_recebido';
+    classificacao?: string;
+    categoria?: string;
+    recorrencia?: string;
+    grupo_recorrencia?: string;
+    created_at?: string;
+}
+
+export interface FinancialGoal {
+    id: string;
+    name: string;
+    target: number;
+    current: number;
+    unit: string;
+    color: string;
+    created_at?: string;
+}
+
+export interface FinancialType {
+    id: string;
+    name: string;
+    created_at?: string;
+}
+
+export interface FinancialCategory {
+    id: string;
+    name: string;
+    created_at?: string;
+}
+
+export interface BudgetPlan {
+    id: string;
+    category: string;
+    month: string;
+    planned_value: number;
+    created_at?: string;
+}
+
+
+
+export interface SellerGoal {
+    id: string;
+    seller_name: string;
+    month: string;
+    year: string;
+    goal_value: number;
+    created_at?: string;
+}
+
+export interface OperationalTask {
+    id: string;
+    titulo: string;
+    descricao?: string;
+    dificuldade?: number; // 1-5
+    progresso?: string; // Não iniciado, Em andamento, Quase pronto, Concluído
+    categoria_tarefa?: string; // Desenvolvimento, Design, Suporte, Implementação
+    data_inicio?: string;
+    data_termino?: string; // Prazo limite
+    tipo: 'previa' | 'finalizar_ferramenta' | 'implementacao' | 'manual' | string;
+    cliente_nome: string;
+    negocio_id?: string;
+    responsavel_id?: string;
+    status: 'A Fazer' | 'Fazendo' | 'Revisando' | 'Finalizado' | 'pendente' | 'em_andamento' | 'concluido';
+    origem: 'comercial_automatico' | 'manual' | string;
+    data_criacao?: string;
+    data_conclusao?: string;
+    observacoes?: string;
+}
+
+// CRM Entities
+export interface ClientCRM {
+    id: string;
+    name: string;
+    cnpj?: string;
+    segment?: string;
+    website?: string;
+    address?: string;
+    contact_name?: string;
+    contact_role?: string;
+    contact_email?: string;
+    contact_phone?: string;
+    monthly_fee?: number;
+    setup_fee?: number;
+    start_date?: string;
+    status?: 'Ativo' | 'Inativo' | 'Em negociação';
+    features_used?: string;
+    observations?: string;
+    responsible_id?: string;
+    created_at?: string;
+}
+
+export interface MeetingCRM {
+    id: string;
+    client_id: string;
+    title: string;
+    date: string;
+    responsible_id?: string;
+    observations?: string;
+    status?: 'Agendada' | 'Realizada' | 'Cancelada';
+    result_notes?: string;
+    is_recurring?: boolean;
+    recurrence_pattern?: string;
+    created_at?: string;
+}
+
+export interface FeedbackCRM {
+    id: string;
+    client_id: string;
+    date?: string;
+    author_type?: 'interno' | 'cliente';
+    author_name?: string;
+    type?: 'Elogio' | 'Sugestão' | 'Reclamação';
+    description: string;
+    created_at?: string;
+}
+
+// Administrative Entities
+export interface AdminDemand {
+    id: string;
+    titulo: string;
+    descricao?: string;
+    responsavel_id?: string;
+    data_prevista?: string;
+    data_conclusao?: string;
+    prioridade?: 'Alta' | 'Média' | 'Baixa';
+    status: 'A Fazer' | 'Fazendo' | 'Finalizado';
+    created_at?: string;
+}
+
+export interface AdminMeeting {
+    id: string;
+    titulo: string;
+    participantes?: string;
+    data_hora?: string;
+    pauta?: string;
+    local_link?: string;
+    status: 'Agendada' | 'Realizada' | 'Cancelada';
+    created_at?: string;
+}
+
+// Legal Entities
+export interface Contract {
+    id: string;
+    nome: string;
+    cliente_fornecedor?: string;
+    data_inicio?: string;
+    data_vencimento?: string;
+    status: 'Ativo' | 'Vencido' | 'Em renovação';
+    arquivo_url?: string;
+    observacoes?: string;
+    created_at?: string;
+}
+
+export interface LegalDocument {
+    id: string;
+    nome: string;
+    categoria: 'Societário' | 'Trabalhista' | 'Tributário' | 'Outro';
+    data_upload?: string;
+    responsavel?: string;
+    observacoes?: string;
+    arquivo_url?: string;
+    created_at?: string;
+}
+
+export interface LegalPendency {
+    id: string;
+    descricao: string;
+    responsavel?: string;
+    prazo?: string;
+    prioridade: 'Alta' | 'Média' | 'Baixa';
+    status: 'Aberta' | 'Em andamento' | 'Resolvida';
+    created_at?: string;
+}
+
+// Calendar
+export interface CalendarEvent {
+    id: string;
+    titulo: string;
+    data: string;
+    hora_inicio?: string;
+    hora_fim?: string;
+    participantes?: string;
+    descricao?: string;
+    cor?: string;
+    origem?: 'manual' | 'crm_reuniao' | 'admin_reuniao';
+    reuniao_id?: string;
+    created_at?: string;
+}
