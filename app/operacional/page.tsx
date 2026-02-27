@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useTeam } from '@/lib/hooks';
+import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useTeam, createNotificationIfEnabled } from '@/lib/hooks';
+import { useAuth } from '../contexts/AuthContext';
 import { Activity, Clock, CheckCircle2, LayoutDashboard, List, PieChart, Plus, Search as SearchIcon, Eye } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell } from 'recharts';
 import type { OperationalTask } from '@/lib/types';
@@ -19,6 +20,7 @@ const DIFICULDADE_LABELS = ['', '⭐', '⭐⭐', '⭐⭐⭐', '⭐⭐⭐⭐', '�
 export default function OperacionalPage() {
     const { data: tasks, loading, setData: setTasksData } = useOperationalTasks();
     const { data: teamMembers } = useTeam();
+    const { user } = useAuth();
     const [draggedTask, setDraggedTask] = useState<OperationalTask | null>(null);
     const [activeTab, setActiveTab] = useState<'painel' | 'kanban' | 'historico'>('painel');
     const [showNewTaskModal, setShowNewTaskModal] = useState(false);
@@ -85,6 +87,22 @@ export default function OperacionalPage() {
                 origem: 'manual',
             });
             setTasksData([...tasks, created]);
+
+            // Notify assigned user
+            if (created.responsavel_id) {
+                const assignedMember = teamMembers.find(m => m.name === created.responsavel_id);
+                if (assignedMember) {
+                    createNotificationIfEnabled(
+                        assignedMember.id,
+                        'tarefa_atribuida',
+                        'Nova tarefa atribuída',
+                        `Você foi atribuído à tarefa '${created.titulo}' por ${user.name}.`,
+                        '/operacional',
+                        'operacional'
+                    ).catch(console.error);
+                }
+            }
+
             setShowNewTaskModal(false);
             setNewTask({ titulo: '', descricao: '', dificuldade: 1, categoria_tarefa: 'Desenvolvimento', tipo: 'manual', cliente_nome: '', status: 'A Fazer', origem: 'manual' });
         } catch (e) { console.error(e); }
@@ -93,11 +111,28 @@ export default function OperacionalPage() {
     async function handleSaveEditTask() {
         if (!editTaskForm.id || !editTaskForm.titulo) return;
         try {
+            const originalTask = tasks.find(t => t.id === editTaskForm.id);
             const updated = await updateOperationalTask(editTaskForm.id, {
                 ...editTaskForm,
                 data_conclusao: editTaskForm.status === 'Finalizado' ? new Date().toISOString() : editTaskForm.data_conclusao
             });
             setTasksData(tasks.map(t => t.id === updated.id ? updated : t));
+
+            // Notify if responsavel changed
+            if (editTaskForm.responsavel_id && editTaskForm.responsavel_id !== originalTask?.responsavel_id) {
+                const assignedMember = teamMembers.find(m => m.name === editTaskForm.responsavel_id);
+                if (assignedMember) {
+                    createNotificationIfEnabled(
+                        assignedMember.id,
+                        'tarefa_atribuida',
+                        'Tarefa atribuída a você',
+                        `Você foi atribuído à tarefa '${updated.titulo}' por ${user.name}.`,
+                        '/operacional',
+                        'operacional'
+                    ).catch(console.error);
+                }
+            }
+
             setShowEditTaskModal(false);
         } catch (e) { console.error(e); }
     }

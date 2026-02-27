@@ -11,7 +11,8 @@ import type {
     ClientCRM, MeetingCRM, FeedbackCRM,
     AdminDemand, AdminMeeting,
     Contract, LegalDocument, LegalPendency,
-    CalendarEvent
+    CalendarEvent,
+    Notification, NotificationSettings
 } from './types';
 
 // Generic hook for fetching data from a table
@@ -483,4 +484,138 @@ export async function updateCalendarEvent(id: string, updates: Partial<CalendarE
 export async function removeCalendarEvent(id: string) {
     const { error } = await supabase.from('calendar_events').delete().eq('id', id);
     if (error) throw error;
+}
+
+// ===== NOTIFICATIONS =====
+export function useNotifications(usuarioId: string) {
+    const [data, setData] = useState<Notification[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchData = async () => {
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('notificacoes')
+            .select('*')
+            .eq('usuario_id', usuarioId)
+            .order('criada_em', { ascending: false });
+        if (error) {
+            console.error('Error fetching notifications:', error.message, error.details);
+        } else {
+            setData((result as Notification[]) ?? []);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        if (usuarioId) fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [usuarioId]);
+
+    return { data, loading, setData, refetch: fetchData };
+}
+
+export async function addNotification(notification: Omit<Notification, 'id' | 'lida' | 'lida_em'>) {
+    const { data, error } = await supabase.from('notificacoes').insert({
+        ...notification,
+        lida: false,
+    }).select().single();
+    if (error) throw error;
+    return data as Notification;
+}
+
+export async function markNotificationAsRead(id: string) {
+    const { data, error } = await supabase.from('notificacoes').update({
+        lida: true,
+        lida_em: new Date().toISOString()
+    }).eq('id', id).select().single();
+    if (error) throw error;
+    return data as Notification;
+}
+
+export async function markAllNotificationsAsRead(usuarioId: string) {
+    const { error } = await supabase.from('notificacoes').update({
+        lida: true,
+        lida_em: new Date().toISOString()
+    }).eq('usuario_id', usuarioId).eq('lida', false);
+    if (error) throw error;
+}
+
+export async function removeReadNotifications(usuarioId: string) {
+    const { error } = await supabase.from('notificacoes').delete()
+        .eq('usuario_id', usuarioId).eq('lida', true);
+    if (error) throw error;
+}
+
+// ===== NOTIFICATION SETTINGS =====
+export function useNotificationSettings(usuarioId: string) {
+    const [data, setData] = useState<NotificationSettings | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    const fetchData = async () => {
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('notification_settings')
+            .select('*')
+            .eq('usuario_id', usuarioId)
+            .maybeSingle();
+        if (error) {
+            console.error('Error fetching notification settings:', error.message, error.details);
+        } else {
+            setData(result as NotificationSettings | null);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        if (usuarioId) fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [usuarioId]);
+
+    return { data, loading, setData, refetch: fetchData };
+}
+
+export async function upsertNotificationSettings(settings: Omit<NotificationSettings, 'id'>) {
+    const { data, error } = await supabase.from('notification_settings').upsert(
+        settings,
+        { onConflict: 'usuario_id' }
+    ).select().single();
+    if (error) throw error;
+    return data as NotificationSettings;
+}
+
+/**
+ * Creates a notification only if the target user has that notification type enabled.
+ * Returns the created notification or null if the type is disabled.
+ */
+export async function createNotificationIfEnabled(
+    usuarioId: string,
+    tipo: Notification['tipo'],
+    titulo: string,
+    mensagem: string,
+    redirecionamento?: string,
+    moduloOrigem?: string
+): Promise<Notification | null> {
+    // Check user settings
+    const { data: settings } = await supabase
+        .from('notification_settings')
+        .select('*')
+        .eq('usuario_id', usuarioId)
+        .maybeSingle();
+
+    if (settings) {
+        const s = settings as NotificationSettings;
+        if (tipo === 'tarefa_atribuida' && !s.notif_tarefa_atribuida) return null;
+        if (tipo === 'tarefa_vencimento' && !s.notif_tarefa_vencimento) return null;
+        if (tipo === 'mencao_chat' && !s.notif_mencao_chat) return null;
+    }
+
+    return addNotification({
+        usuario_id: usuarioId,
+        tipo,
+        titulo,
+        mensagem,
+        redirecionamento,
+        modulo_origem: moduloOrigem,
+        criada_em: new Date().toISOString()
+    });
 }

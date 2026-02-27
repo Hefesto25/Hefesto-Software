@@ -294,3 +294,27 @@ export interface CalendarEvent {
     reuniao_id?: string;
     created_at?: string;
 }
+
+// Notifications
+export interface Notification {
+    id: string;
+    usuario_id: string;
+    tipo: 'tarefa_atribuida' | 'tarefa_vencimento' | 'mencao_chat';
+    titulo: string;
+    mensagem: string;
+    lida: boolean;
+    redirecionamento?: string;
+    modulo_origem?: string;
+    criada_em: string;
+    lida_em?: string;
+}
+
+export interface NotificationSettings {
+    id: string;
+    usuario_id: string;
+    push_enabled: boolean;
+    notif_tarefa_atribuida: boolean;
+    notif_tarefa_vencimento: boolean;
+    notif_mencao_chat: boolean;
+    vencimento_dias_antes: string;
+}

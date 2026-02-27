@@ -2,23 +2,26 @@
 
 import './globals.css';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { NotificationProvider, useNotificationContext } from './contexts/NotificationContext';
 import {
   LayoutDashboard,
   DollarSign,
   MessageSquare,
-  Search,
   Bell,
-  Settings,
   ChevronRight,
   Briefcase,
   Wrench,
   TrendingUp,
-  Scale,
   CalendarDays,
+  ClipboardList,
+  Clock,
+  AtSign,
+  BellOff,
 } from 'lucide-react';
+import type { Notification } from '@/lib/types';
 
 interface NavItem {
   href: string;
@@ -56,11 +59,133 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
   '/calendario': { title: 'Calendário', subtitle: 'Eventos e reuniões da equipe' },
   '/chat': { title: 'Chat da Equipe', subtitle: 'Comunicação interna' },
   '/configuracoes': { title: 'Configurações', subtitle: 'Gerencie sua equipe e permissões' },
+  '/notificacoes': { title: 'Notificações', subtitle: 'Histórico completo de notificações' },
 };
+
+/** Relative time formatting in Portuguese */
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHours = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSec < 60) return 'agora';
+  if (diffMin < 60) return `há ${diffMin} minuto${diffMin > 1 ? 's' : ''}`;
+  if (diffHours < 24) return `há ${diffHours} hora${diffHours > 1 ? 's' : ''}`;
+  if (diffDays === 1) return 'ontem';
+  if (diffDays < 7) return `há ${diffDays} dias`;
+  return date.toLocaleDateString('pt-BR');
+}
+
+function NotificationIcon({ tipo }: { tipo: Notification['tipo'] }) {
+  switch (tipo) {
+    case 'tarefa_atribuida':
+      return <ClipboardList size={16} />;
+    case 'tarefa_vencimento':
+      return <Clock size={16} />;
+    case 'mencao_chat':
+      return <AtSign size={16} />;
+    default:
+      return <Bell size={16} />;
+  }
+}
+
+function NotificationBell() {
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotificationContext();
+  const [isOpen, setIsOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  const displayNotifications = notifications.slice(0, 20);
+
+  async function handleNotificationClick(notif: Notification) {
+    if (!notif.lida) {
+      await markAsRead(notif.id);
+    }
+    setIsOpen(false);
+    if (notif.redirecionamento) {
+      router.push(notif.redirecionamento);
+    }
+  }
+
+  async function handleMarkAllAsRead() {
+    await markAllAsRead();
+  }
+
+  return (
+    <div className="notification-bell-wrapper" ref={panelRef}>
+      <button
+        className="header-action-btn"
+        onClick={() => setIsOpen(!isOpen)}
+        title="Notificações"
+      >
+        <Bell size={18} />
+        {unreadCount > 0 && (
+          <span className="notification-badge" key={unreadCount}>
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {isOpen && (
+        <>
+          <div className="notification-overlay" onClick={() => setIsOpen(false)} />
+          <div className="notification-panel">
+            <div className="notification-panel-header">
+              <h3>Notificações</h3>
+              {unreadCount > 0 && (
+                <button onClick={handleMarkAllAsRead}>
+                  Marcar todas como lidas
+                </button>
+              )}
+            </div>
+
+            <div className="notification-panel-list">
+              {displayNotifications.length === 0 ? (
+                <div className="notification-empty">
+                  <BellOff size={40} />
+                  <span>Nenhuma notificação</span>
+                </div>
+              ) : (
+                displayNotifications.map(notif => (
+                  <div
+                    key={notif.id}
+                    className={`notification-item ${!notif.lida ? 'unread' : ''}`}
+                    onClick={() => handleNotificationClick(notif)}
+                  >
+                    <div className={`notification-item-icon ${notif.tipo}`}>
+                      <NotificationIcon tipo={notif.tipo} />
+                    </div>
+                    <div className="notification-item-content">
+                      <div className="notification-item-title">{notif.titulo}</div>
+                      <div className="notification-item-message">{notif.mensagem}</div>
+                      <div className="notification-item-time">
+                        {formatRelativeTime(notif.criada_em)}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="notification-panel-footer">
+              <Link href="/notificacoes" onClick={() => setIsOpen(false)}>
+                Ver todas
+              </Link>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, switchCategory, getAllowedModules } = useAuth();
+  const { user, getAllowedModules } = useAuth();
   const allowed = getAllowedModules();
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
@@ -152,14 +277,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
                 {formattedTime}
               </div>
             )}
-            <button className="header-action-btn">
-              <Bell size={18} />
-              <span className="notification-dot"></span>
-            </button>
+            <NotificationBell />
           </div>
         </header>
         <div className="page-content">
-          {!allowed.includes(pathname) && pathname !== '/' ? (
+          {!allowed.includes(pathname) && pathname !== '/' && pathname !== '/notificacoes' ? (
             <div style={{ textAlign: 'center', paddingTop: 100 }}>
               <h2>Acesso Negado</h2>
               <p className="text-muted">A categoria atual ({user.category}) não tem acesso a esta página.</p>
@@ -182,9 +304,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <AuthProvider>
-          <AppContent>
-            {children}
-          </AppContent>
+          <NotificationProvider>
+            <AppContent>
+              {children}
+            </AppContent>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

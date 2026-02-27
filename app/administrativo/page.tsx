@@ -11,9 +11,11 @@ import {
     useAdminDemands, useAdminMeetings, useTeam, useCalendarEvents,
     addAdminDemand, updateAdminDemand, removeAdminDemand,
     addAdminMeeting, updateAdminMeeting, removeAdminMeeting,
-    addCalendarEvent, updateCalendarEvent, removeCalendarEvent
+    addCalendarEvent, updateCalendarEvent, removeCalendarEvent,
+    createNotificationIfEnabled
 } from '@/lib/hooks';
 import { getBahiaDate, getBahiaDateString } from '@/lib/utils';
+import { useAuth } from '../contexts/AuthContext';
 
 const DEMAND_COLUMNS = [
     { id: 'A Fazer', label: 'A Fazer', color: '#F59E0B' },
@@ -30,6 +32,7 @@ export default function AdministrativoPage() {
     const { data: meetingsData, refetch: refetchMeetings } = useAdminMeetings();
     const { data: teamMembers } = useTeam();
     const { data: calendarEvents, refetch: refetchCalendar } = useCalendarEvents();
+    const { user } = useAuth();
 
     const [showDemandModal, setShowDemandModal] = useState(false);
     const [showMeetingModal, setShowMeetingModal] = useState(false);
@@ -147,11 +150,42 @@ export default function AdministrativoPage() {
         }
         try {
             if (editingDemand) {
+                const originalDemand = demandsData.find(d => d.id === editingDemand.id);
                 await updateAdminDemand(editingDemand.id, demandForm);
                 setToast({ message: 'Demanda atualizada com sucesso!', type: 'success' });
+
+                // Notify if responsavel changed
+                if (demandForm.responsavel_id && demandForm.responsavel_id !== originalDemand?.responsavel_id) {
+                    const assignedMember = teamMembers.find(t => t.id === demandForm.responsavel_id);
+                    if (assignedMember) {
+                        createNotificationIfEnabled(
+                            assignedMember.id,
+                            'tarefa_atribuida',
+                            'Demanda atribuída a você',
+                            `Você foi atribuído à demanda '${demandForm.titulo}' por ${user.name}.`,
+                            '/administrativo',
+                            'administrativo'
+                        ).catch(console.error);
+                    }
+                }
             } else {
-                await addAdminDemand(demandForm as Omit<AdminDemand, 'id' | 'created_at'>);
+                const created = await addAdminDemand(demandForm as Omit<AdminDemand, 'id' | 'created_at'>);
                 setToast({ message: 'Nova demanda criada com sucesso!', type: 'success' });
+
+                // Notify assigned user
+                if (created.responsavel_id) {
+                    const assignedMember = teamMembers.find(t => t.id === created.responsavel_id);
+                    if (assignedMember) {
+                        createNotificationIfEnabled(
+                            assignedMember.id,
+                            'tarefa_atribuida',
+                            'Nova demanda atribuída',
+                            `Você foi atribuído à demanda '${created.titulo}' por ${user.name}.`,
+                            '/administrativo',
+                            'administrativo'
+                        ).catch(console.error);
+                    }
+                }
             }
             setShowDemandModal(false);
             setEditingDemand(null);

@@ -1,14 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Shield, User, Eye, X, Check, Settings, Briefcase } from 'lucide-react';
+import { Plus, Pencil, Trash2, Shield, User, Eye, X, Check, Settings, Briefcase, Bell } from 'lucide-react';
 import {
     useTeam, addTeamMember, updateTeamMember, removeTeamMember,
     useFinancialTypes, useFinancialCategories,
     addFinancialType, removeFinancialType,
-    addFinancialCategory, removeFinancialCategory
+    addFinancialCategory, removeFinancialCategory,
+    useNotificationSettings, upsertNotificationSettings
 } from '@/lib/hooks';
 import type { TeamMember } from '@/lib/types';
+import { useAuth } from '../contexts/AuthContext';
+import { useNotificationContext } from '../contexts/NotificationContext';
 
 const AVATAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#EF4444', '#06B6D4', '#14B8A6', '#6366F1', '#F97316'];
 
@@ -28,12 +31,15 @@ export default function ConfiguracoesPage() {
     const { data: team, loading, setData: setTeam } = useTeam();
     const { data: types, loading: loadingTypes, setData: setTypes } = useFinancialTypes();
     const { data: categories, loading: loadingCategories, setData: setCategories } = useFinancialCategories();
+    const { user } = useAuth();
+    const { pushPermission, requestPushPermission } = useNotificationContext();
+    const { data: notifSettings, loading: loadingNotifSettings, refetch: refetchNotifSettings } = useNotificationSettings(user.id);
 
     const [modal, setModal] = useState<ModalState>(null);
     const [saving, setSaving] = useState(false);
 
     // Tab State
-    const [activeTab, setActiveTab] = useState<'equipe' | 'financas'>('equipe');
+    const [activeTab, setActiveTab] = useState<'equipe' | 'financas' | 'notificacoes'>('equipe');
 
     // Finanças State
     const [newType, setNewType] = useState('');
@@ -211,6 +217,12 @@ export default function ConfiguracoesPage() {
                     onClick={() => setActiveTab('financas')}
                 >
                     <Briefcase size={14} /> Preferências Financeiras
+                </button>
+                <button
+                    className={`finance-tab ${activeTab === 'notificacoes' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('notificacoes')}
+                >
+                    <Bell size={14} /> Notificações
                 </button>
             </div>
 
@@ -518,6 +530,173 @@ export default function ConfiguracoesPage() {
                         )}
                     </div>
 
+                </div>
+            )}
+
+            {/* TAB: NOTIFICAÇÕES */}
+            {activeTab === 'notificacoes' && (
+                <div style={{ maxWidth: 600 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600, marginBottom: 16 }}>
+                        Preferências de Notificação
+                    </div>
+
+                    {/* Push */}
+                    <div className="notif-settings-item">
+                        <div className="notif-settings-item-info">
+                            <div className="notif-settings-item-label">Notificações Push do Navegador</div>
+                            <div className="notif-settings-item-desc">
+                                {pushPermission === 'granted'
+                                    ? 'Ativado — Você receberá alertas mesmo com o HEFESTO em segundo plano.'
+                                    : pushPermission === 'denied'
+                                        ? 'Bloqueado — Permissão negada no navegador. Reative nas configurações do navegador.'
+                                        : 'Clique para ativar notificações push do navegador.'}
+                            </div>
+                        </div>
+                        {pushPermission !== 'denied' && (
+                            <label className="toggle-switch">
+                                <input
+                                    type="checkbox"
+                                    checked={pushPermission === 'granted' && (notifSettings?.push_enabled ?? true)}
+                                    onChange={async (e) => {
+                                        if (pushPermission !== 'granted') {
+                                            await requestPushPermission();
+                                        } else {
+                                            await upsertNotificationSettings({
+                                                usuario_id: user.id,
+                                                push_enabled: e.target.checked,
+                                                notif_tarefa_atribuida: notifSettings?.notif_tarefa_atribuida ?? true,
+                                                notif_tarefa_vencimento: notifSettings?.notif_tarefa_vencimento ?? true,
+                                                notif_mencao_chat: notifSettings?.notif_mencao_chat ?? true,
+                                                vencimento_dias_antes: notifSettings?.vencimento_dias_antes ?? '5,3,1',
+                                            });
+                                            refetchNotifSettings();
+                                        }
+                                    }}
+                                />
+                                <span className="toggle-slider"></span>
+                            </label>
+                        )}
+                    </div>
+
+                    <div style={{ height: 12 }} />
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600, marginBottom: 12 }}>
+                        Tipos de Notificação
+                    </div>
+
+                    {/* Tarefa Atribuída */}
+                    <div className="notif-settings-item">
+                        <div className="notif-settings-item-info">
+                            <div className="notif-settings-item-label">Atribuição de Tarefa</div>
+                            <div className="notif-settings-item-desc">Quando alguém atribui uma tarefa ou demanda a você.</div>
+                        </div>
+                        <label className="toggle-switch">
+                            <input
+                                type="checkbox"
+                                checked={notifSettings?.notif_tarefa_atribuida ?? true}
+                                onChange={async (e) => {
+                                    await upsertNotificationSettings({
+                                        usuario_id: user.id,
+                                        push_enabled: notifSettings?.push_enabled ?? true,
+                                        notif_tarefa_atribuida: e.target.checked,
+                                        notif_tarefa_vencimento: notifSettings?.notif_tarefa_vencimento ?? true,
+                                        notif_mencao_chat: notifSettings?.notif_mencao_chat ?? true,
+                                        vencimento_dias_antes: notifSettings?.vencimento_dias_antes ?? '5,3,1',
+                                    });
+                                    refetchNotifSettings();
+                                }}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    {/* Tarefa Vencimento */}
+                    <div className="notif-settings-item">
+                        <div className="notif-settings-item-info">
+                            <div className="notif-settings-item-label">Vencimento de Tarefa</div>
+                            <div className="notif-settings-item-desc">Alertas quando suas tarefas estiverem próximas do prazo.</div>
+                        </div>
+                        <label className="toggle-switch">
+                            <input
+                                type="checkbox"
+                                checked={notifSettings?.notif_tarefa_vencimento ?? true}
+                                onChange={async (e) => {
+                                    await upsertNotificationSettings({
+                                        usuario_id: user.id,
+                                        push_enabled: notifSettings?.push_enabled ?? true,
+                                        notif_tarefa_atribuida: notifSettings?.notif_tarefa_atribuida ?? true,
+                                        notif_tarefa_vencimento: e.target.checked,
+                                        notif_mencao_chat: notifSettings?.notif_mencao_chat ?? true,
+                                        vencimento_dias_antes: notifSettings?.vencimento_dias_antes ?? '5,3,1',
+                                    });
+                                    refetchNotifSettings();
+                                }}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    {/* Dias de antecedência */}
+                    <div className="notif-settings-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}>
+                        <div className="notif-settings-item-info">
+                            <div className="notif-settings-item-label">Antecedência de Vencimento</div>
+                            <div className="notif-settings-item-desc">Quantos dias antes do prazo deseja ser notificado.</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {[1, 2, 3, 5, 7].map(d => {
+                                const currentDays = (notifSettings?.vencimento_dias_antes ?? '5,3,1').split(',').map(Number);
+                                const isActive = currentDays.includes(d);
+                                return (
+                                    <button
+                                        key={d}
+                                        className={`btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
+                                        style={{ padding: '6px 14px', fontSize: 13 }}
+                                        onClick={async () => {
+                                            const newDays = isActive
+                                                ? currentDays.filter(x => x !== d)
+                                                : [...currentDays, d].sort((a, b) => b - a);
+                                            await upsertNotificationSettings({
+                                                usuario_id: user.id,
+                                                push_enabled: notifSettings?.push_enabled ?? true,
+                                                notif_tarefa_atribuida: notifSettings?.notif_tarefa_atribuida ?? true,
+                                                notif_tarefa_vencimento: notifSettings?.notif_tarefa_vencimento ?? true,
+                                                notif_mencao_chat: notifSettings?.notif_mencao_chat ?? true,
+                                                vencimento_dias_antes: newDays.join(','),
+                                            });
+                                            refetchNotifSettings();
+                                        }}
+                                    >
+                                        {d} dia{d > 1 ? 's' : ''}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Menção Chat */}
+                    <div className="notif-settings-item">
+                        <div className="notif-settings-item-info">
+                            <div className="notif-settings-item-label">Menção no Chat</div>
+                            <div className="notif-settings-item-desc">Quando alguém mencionar você com @nome em um canal.</div>
+                        </div>
+                        <label className="toggle-switch">
+                            <input
+                                type="checkbox"
+                                checked={notifSettings?.notif_mencao_chat ?? true}
+                                onChange={async (e) => {
+                                    await upsertNotificationSettings({
+                                        usuario_id: user.id,
+                                        push_enabled: notifSettings?.push_enabled ?? true,
+                                        notif_tarefa_atribuida: notifSettings?.notif_tarefa_atribuida ?? true,
+                                        notif_tarefa_vencimento: notifSettings?.notif_tarefa_vencimento ?? true,
+                                        notif_mencao_chat: e.target.checked,
+                                        vencimento_dias_antes: notifSettings?.vencimento_dias_antes ?? '5,3,1',
+                                    });
+                                    refetchNotifSettings();
+                                }}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
                 </div>
             )}
         </>
