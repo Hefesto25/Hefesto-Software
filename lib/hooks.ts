@@ -53,6 +53,71 @@ export function useTeam() {
     return useSupabaseTable<TeamMember>('team_members');
 }
 
+// Usuarios (Auth-linked profiles)
+export interface UsuarioDB {
+    id: string;
+    nome: string;
+    email: string;
+    cargo: string | null;
+    categoria: string;
+    foto_url: string | null;
+    modulos_acesso: string[];
+    created_at: string;
+}
+
+export function useUsuarios() {
+    return useSupabaseTable<UsuarioDB>('usuarios', { column: 'created_at', ascending: false });
+}
+
+const SUPABASE_URL = 'https://hlqftzvwilbwchfqelqy.supabase.co';
+
+export async function createUsuarioViaEdge(payload: {
+    email: string;
+    password: string;
+    nome: string;
+    cargo?: string;
+    categoria: string;
+    modulos_acesso: string[];
+}): Promise<{ success: boolean; user?: UsuarioDB; error?: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Sessão expirada. Faça login novamente.' };
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-user`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+        return { success: false, error: data.error || 'Erro desconhecido ao criar usuário.' };
+    }
+    return { success: true, user: data.user };
+}
+
+export async function deleteUsuarioViaEdge(userId: string): Promise<{ success: boolean; error?: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { success: false, error: 'Sessão expirada. Faça login novamente.' };
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ user_id: userId }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+        return { success: false, error: data.error || 'Erro desconhecido ao remover usuário.' };
+    }
+    return { success: true };
+}
+
 export async function addTeamMember(member: Omit<TeamMember, 'id' | 'created_at'>) {
     const { data, error } = await supabase.from('team_members').insert(member).select().single();
     if (error) throw error;

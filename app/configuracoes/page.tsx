@@ -1,15 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Shield, User, Eye, X, Check, Settings, Briefcase, Bell } from 'lucide-react';
+import { Plus, Pencil, Trash2, Shield, User, Eye, X, Check, Briefcase, Bell, Mail, Calendar } from 'lucide-react';
 import {
-    useTeam, addTeamMember, updateTeamMember, removeTeamMember,
+    useUsuarios, createUsuarioViaEdge, deleteUsuarioViaEdge,
     useFinancialTypes, useFinancialCategories,
     addFinancialType, removeFinancialType,
     addFinancialCategory, removeFinancialCategory,
     useNotificationSettings, upsertNotificationSettings
 } from '@/lib/hooks';
-import type { TeamMember } from '@/lib/types';
+import type { UsuarioDB } from '@/lib/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotificationContext } from '../contexts/NotificationContext';
 
@@ -22,13 +22,22 @@ const PERMISSION_LABELS: Record<string, { label: string; icon: typeof Shield; co
 };
 
 function getInitials(name: string) {
-    return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+    if (!name) return '??';
+    return name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase();
 }
 
-type ModalState = { type: 'add' } | { type: 'edit'; member: TeamMember } | { type: 'delete'; member: TeamMember } | null;
+const CATEGORIA_LABELS: Record<string, string> = {
+    'Admin Geral': 'Administrador',
+    'Administrativa': 'Administrativo',
+    'Financeira': 'Financeiro',
+    'Operacional': 'Operacional',
+    'Comercial': 'Comercial',
+};
+
+type ModalState = { type: 'add' } | { type: 'edit'; usuario: UsuarioDB } | { type: 'delete'; usuario: UsuarioDB } | null;
 
 export default function ConfiguracoesPage() {
-    const { data: team, loading, setData: setTeam } = useTeam();
+    const { data: usuarios, loading, setData: setUsuarios, refetch: refetchUsuarios } = useUsuarios();
     const { data: types, loading: loadingTypes, setData: setTypes } = useFinancialTypes();
     const { data: categories, loading: loadingCategories, setData: setCategories } = useFinancialCategories();
     const { user } = useAuth();
@@ -37,6 +46,8 @@ export default function ConfiguracoesPage() {
 
     const [modal, setModal] = useState<ModalState>(null);
     const [saving, setSaving] = useState(false);
+    const [formError, setFormError] = useState<string | null>(null);
+    const [toast, setToast] = useState<string | null>(null);
     const userId = user?.id ?? '';
 
     // Tab State
@@ -50,79 +61,66 @@ export default function ConfiguracoesPage() {
     const [formName, setFormName] = useState('');
     const [formEmail, setFormEmail] = useState('');
     const [formRole, setFormRole] = useState('');
-    const [formPermission, setFormPermission] = useState<'admin' | 'member' | 'viewer'>('member');
-    const [formColor, setFormColor] = useState(AVATAR_COLORS[0]);
-    const [formCategory, setFormCategory] = useState('');
-    const [formModules, setFormModules] = useState<string[]>(['/', '/chat', '/configuracoes']);
+    const [formCategory, setFormCategory] = useState('Operacional');
+    const [formModules, setFormModules] = useState<string[]>(['/', '/chat', '/notificacoes']);
     const [formPassword, setFormPassword] = useState('');
+
+    function showToast(msg: string) {
+        setToast(msg);
+        setTimeout(() => setToast(null), 4000);
+    }
 
     function openAddModal() {
         setFormName('');
         setFormEmail('');
         setFormRole('');
-        setFormPermission('member');
-        setFormColor(AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]);
-        setFormCategory('');
-        setFormModules(['/', '/chat', '/configuracoes']);
+        setFormCategory('Operacional');
+        setFormModules(['/', '/chat', '/notificacoes']);
         setFormPassword('');
+        setFormError(null);
         setModal({ type: 'add' });
     }
 
-    function openEditModal(member: TeamMember) {
-        setFormName(member.name);
-        setFormEmail(member.email);
-        setFormRole(member.role);
-        setFormPermission(member.permission);
-        setFormColor(member.avatar_color);
-        setFormCategory(member.category || '');
-        setFormModules(member.allowed_modules || ['/', '/chat', '/configuracoes']);
-        setFormPassword(member.initial_password || '');
-        setModal({ type: 'edit', member });
-    }
-
     async function handleAdd() {
-        if (!formName || !formEmail || !formRole) return;
-        setSaving(true);
-        try {
-            const newMember = await addTeamMember({
-                name: formName,
-                initials: getInitials(formName),
-                email: formEmail,
-                role: formRole,
-                permission: formPermission,
-                avatar_color: formColor,
-                status: 'offline',
-                category: formCategory,
-                allowed_modules: formModules,
-                initial_password: formPassword
-            });
-            setTeam([...team, newMember]);
-            setModal(null);
-        } catch (e) {
-            console.error(e);
+        if (!formName || !formEmail || !formRole || !formCategory) {
+            setFormError('Preencha todos os campos obrigatórios.');
+            return;
         }
-        setSaving(false);
-    }
-
-    async function handleEdit() {
-        if (modal?.type !== 'edit') return;
+        if (!formPassword || formPassword.length < 6) {
+            setFormError('A senha deve ter no mínimo 6 caracteres.');
+            return;
+        }
         setSaving(true);
+        setFormError(null);
         try {
-            const updated = await updateTeamMember(modal.member.id, {
-                name: formName,
-                initials: getInitials(formName),
-                email: formEmail,
-                role: formRole,
-                permission: formPermission,
-                avatar_color: formColor,
-                category: formCategory,
-                allowed_modules: formModules,
-                initial_password: formPassword
+            // Compute final modules: admin gets all; always include /, /chat, /notificacoes
+            const baseModules = ['/', '/chat', '/notificacoes', '/configuracoes'];
+            const allModules = ['/', '/comercial', '/financeiro', '/operacional', '/administrativo', '/calendario', '/chat', '/configuracoes', '/notificacoes'];
+            const finalModules = formCategory === 'Admin Geral'
+                ? allModules
+                : [...new Set([...baseModules, ...formModules])];
+
+            const result = await createUsuarioViaEdge({
+                email: formEmail.trim(),
+                password: formPassword,
+                nome: formName.trim(),
+                cargo: formRole.trim(),
+                categoria: formCategory,
+                modulos_acesso: finalModules,
             });
-            setTeam(team.map(m => m.id === updated.id ? updated : m));
+
+            if (!result.success) {
+                setFormError(result.error || 'Erro ao criar usuário.');
+                setSaving(false);
+                return;
+            }
+
+            await refetchUsuarios();
             setModal(null);
+            showToast(`Usuário ${formName} criado com sucesso.`);
         } catch (e) {
             console.error(e);
+            setFormError('Erro inesperado ao criar usuário.');
         }
         setSaving(false);
     }
@@ -131,9 +129,15 @@ export default function ConfiguracoesPage() {
         if (modal?.type !== 'delete') return;
         setSaving(true);
         try {
-            await removeTeamMember(modal.member.id);
-            setTeam(team.filter(m => m.id !== modal.member.id));
+            const result = await deleteUsuarioViaEdge(modal.usuario.id);
+            if (!result.success) {
+                alert(result.error || 'Erro ao remover usuário.');
+                setSaving(false);
+                return;
+            }
+            setUsuarios(usuarios.filter(u => u.id !== modal.usuario.id));
             setModal(null);
+            showToast(`Usuário ${modal.usuario.nome} removido.`);
         } catch (e) {
             console.error(e);
         }
@@ -192,12 +196,20 @@ export default function ConfiguracoesPage() {
         return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--text-muted)' }}>Carregando...</div>;
     }
 
-    const admins = team.filter(m => m.permission === 'admin');
-    const members = team.filter(m => m.permission === 'member');
-    const viewers = team.filter(m => m.permission === 'viewer');
-
     return (
         <>
+            {/* Toast */}
+            {toast && (
+                <div style={{
+                    position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+                    background: 'var(--success)', color: 'white', padding: '12px 20px',
+                    borderRadius: 8, fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                    animation: 'fadeIn 300ms ease'
+                }}>
+                    {toast}
+                </div>
+            )}
+
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
                 <div>
@@ -207,22 +219,13 @@ export default function ConfiguracoesPage() {
             </div>
 
             <div className="finance-tabs">
-                <button
-                    className={`finance-tab ${activeTab === 'equipe' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('equipe')}
-                >
+                <button className={`finance-tab ${activeTab === 'equipe' ? 'active' : ''}`} onClick={() => setActiveTab('equipe')}>
                     <User size={14} /> Gestão da Equipe
                 </button>
-                <button
-                    className={`finance-tab ${activeTab === 'financas' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('financas')}
-                >
+                <button className={`finance-tab ${activeTab === 'financas' ? 'active' : ''}`} onClick={() => setActiveTab('financas')}>
                     <Briefcase size={14} /> Preferências Financeiras
                 </button>
-                <button
-                    className={`finance-tab ${activeTab === 'notificacoes' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('notificacoes')}
-                >
+                <button className={`finance-tab ${activeTab === 'notificacoes' ? 'active' : ''}`} onClick={() => setActiveTab('notificacoes')}>
                     <Bell size={14} /> Notificações
                 </button>
             </div>
@@ -230,157 +233,100 @@ export default function ConfiguracoesPage() {
             {/* TAB: EQUIPE */}
             {activeTab === 'equipe' && (
                 <>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{usuarios.length} usuário{usuarios.length !== 1 ? 's' : ''} cadastrado{usuarios.length !== 1 ? 's' : ''}</div>
                         <button className="btn btn-primary" onClick={openAddModal}>
-                            <Plus size={14} /> Adicionar Membro
+                            <Plus size={14} /> Criar Usuário
                         </button>
                     </div>
 
-                    {/* Permission groups */}
-                    {[
-                        { title: 'Administradores', members: admins, permission: 'admin' as const },
-                        { title: 'Membros', members: members, permission: 'member' as const },
-                        { title: 'Visualizadores', members: viewers, permission: 'viewer' as const },
-                    ].filter(g => g.members.length > 0).map(group => {
-                        const perm = PERMISSION_LABELS[group.permission];
-                        return (
-                            <div key={group.permission} style={{ marginBottom: 28 }}>
-                                <div className="settings-group-header">
-                                    <perm.icon size={14} style={{ color: perm.color }} />
-                                    <span>{group.title}</span>
-                                    <span className="settings-group-count">{group.members.length}</span>
+                    {/* User list */}
+                    <div className="settings-member-list">
+                        {usuarios.map(u => (
+                            <div key={u.id} className="settings-member-card">
+                                <div className="settings-member-avatar" style={{ background: AVATAR_COLORS[u.nome.charCodeAt(0) % AVATAR_COLORS.length] }}>
+                                    {getInitials(u.nome)}
                                 </div>
-                                <div className="settings-member-list">
-                                    {group.members.map(member => (
-                                        <div key={member.id} className="settings-member-card">
-                                            <div className="settings-member-avatar" style={{ background: member.avatar_color }}>
-                                                {member.initials}
-                                            </div>
-                                            <div className="settings-member-info">
-                                                <div className="settings-member-name">{member.name}</div>
-                                                <div className="settings-member-role">{member.role}</div>
-                                            </div>
-                                            <div className="settings-member-email">{member.email}</div>
-                                            <div className={`settings-permission-badge ${member.permission}`}>
-                                                {PERMISSION_LABELS[member.permission].label}
-                                            </div>
-                                            <div className="settings-member-actions">
-                                                <button className="settings-action-btn" onClick={() => openEditModal(member)} title="Editar">
-                                                    <Pencil size={14} />
-                                                </button>
-                                                <button
-                                                    className="settings-action-btn danger"
-                                                    onClick={() => setModal({ type: 'delete', member })}
-                                                    title="Remover"
-                                                    disabled={member.permission === 'admin' && admins.length <= 1}
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </div>
+                                <div className="settings-member-info">
+                                    <div className="settings-member-name">{u.nome}</div>
+                                    <div className="settings-member-role">{u.cargo || 'Sem cargo'}</div>
+                                </div>
+                                <div className="settings-member-email">
+                                    <Mail size={12} style={{ opacity: 0.5 }} /> {u.email}
+                                </div>
+                                <div className={`settings-permission-badge ${u.categoria === 'Admin Geral' ? 'admin' : 'member'}`}>
+                                    {CATEGORIA_LABELS[u.categoria] || u.categoria}
+                                </div>
+                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 160 }}>
+                                    {u.modulos_acesso?.filter(m => m !== '/' && m !== '/chat' && m !== '/notificacoes' && m !== '/configuracoes').map(m => (
+                                        <span key={m} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
+                                            {m.replace('/', '')}
+                                        </span>
                                     ))}
                                 </div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <Calendar size={11} />
+                                    {u.created_at ? new Date(u.created_at).toLocaleDateString('pt-BR') : '-'}
+                                </div>
+                                <div className="settings-member-actions">
+                                    <button
+                                        className="settings-action-btn danger"
+                                        onClick={() => setModal({ type: 'delete', usuario: u })}
+                                        title="Remover"
+                                        disabled={u.id === user?.id}
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
                             </div>
-                        );
-                    })}
+                        ))}
+                        {usuarios.length === 0 && (
+                            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>
+                                Nenhum usuário cadastrado ainda.
+                            </div>
+                        )}
+                    </div>
 
-                    {/* Add/Edit Modal */}
-                    {(modal?.type === 'add' || modal?.type === 'edit') && (
+                    {/* Add Modal */}
+                    {modal?.type === 'add' && (
                         <div className="settings-modal-overlay" onClick={() => setModal(null)}>
                             <div className="settings-modal" onClick={e => e.stopPropagation()}>
                                 <div className="settings-modal-header">
-                                    <h3>{modal.type === 'add' ? 'Adicionar Membro' : 'Editar Membro'}</h3>
+                                    <h3>Criar Usuário</h3>
                                     <button className="settings-action-btn" onClick={() => setModal(null)}>
                                         <X size={16} />
                                     </button>
                                 </div>
                                 <div className="settings-modal-body">
-                                    {/* Avatar Preview & Upload */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                                        <div style={{
-                                            width: 80, height: 80, borderRadius: '50%', background: formColor,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: 28, fontWeight: 700, color: 'white', position: 'relative', overflow: 'hidden'
-                                        }}>
-                                            {formName ? getInitials(formName) : '??'}
-                                        </div>
-                                        <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => alert('Em breve: Upload de imagem. O Storage do Supabase precisa ser configurado primeiro.')}>Alterar Foto (Em breve)</button>
-                                    </div>
-
-                                    {/* Color picker */}
-                                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 20 }}>
-                                        {AVATAR_COLORS.map(color => (
-                                            <button
-                                                key={color}
-                                                onClick={() => setFormColor(color)}
-                                                style={{
-                                                    width: 28, height: 28, borderRadius: '50%', background: color,
-                                                    border: formColor === color ? '3px solid var(--text-primary)' : '2px solid transparent',
-                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    transition: 'all 150ms ease',
-                                                }}
-                                            >
-                                                {formColor === color && <Check size={14} style={{ color: 'white' }} />}
-                                            </button>
-                                        ))}
-                                    </div>
-
                                     <div className="form-group" style={{ marginBottom: 14 }}>
-                                        <label className="form-label">Nome Completo</label>
+                                        <label className="form-label">Nome Completo *</label>
                                         <input className="form-input" type="text" value={formName} onChange={e => setFormName(e.target.value)} placeholder="ex: João da Silva" />
                                     </div>
 
                                     <div className="form-group" style={{ marginBottom: 14 }}>
-                                        <label className="form-label">Email</label>
-                                        <input className="form-input" type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="ex: joao@hefesto.ai" />
+                                        <label className="form-label">E-mail *</label>
+                                        <input className="form-input" type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="ex: joao@hefestoia.com" />
                                     </div>
 
                                     <div className="form-group" style={{ marginBottom: 14 }}>
-                                        <label className="form-label">Senha Inicial</label>
+                                        <label className="form-label">Senha Inicial * <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>(mín. 6 caracteres)</span></label>
                                         <input className="form-input" type="text" value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder="ex: Mudar@123" />
                                     </div>
 
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 14 }}>
                                         <div className="form-group">
-                                            <label className="form-label">Função / Cargo</label>
+                                            <label className="form-label">Cargo *</label>
                                             <input className="form-input" type="text" value={formRole} onChange={e => setFormRole(e.target.value)} placeholder="ex: Desenvolvedor" />
                                         </div>
                                         <div className="form-group">
-                                            <label className="form-label">Área / Time</label>
+                                            <label className="form-label">Categoria *</label>
                                             <select className="form-select" value={formCategory} onChange={e => setFormCategory(e.target.value)}>
-                                                <option value="">Selecione...</option>
                                                 <option value="Admin Geral">Admin Geral</option>
                                                 <option value="Administrativa">Administrativa</option>
                                                 <option value="Comercial">Comercial</option>
                                                 <option value="Financeira">Financeira</option>
                                                 <option value="Operacional">Operacional</option>
                                             </select>
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group" style={{ marginBottom: 20 }}>
-                                        <label className="form-label">Permissão</label>
-                                        <div className="settings-permission-select">
-                                            {(['admin', 'member', 'viewer'] as const).map(p => {
-                                                const perm = PERMISSION_LABELS[p];
-                                                const Icon = perm.icon;
-                                                return (
-                                                    <button
-                                                        key={p}
-                                                        className={`settings-permission-option ${formPermission === p ? 'active' : ''}`}
-                                                        onClick={() => setFormPermission(p)}
-                                                        style={{ '--perm-color': perm.color } as React.CSSProperties}
-                                                    >
-                                                        <Icon size={16} />
-                                                        <div>
-                                                            <div style={{ fontWeight: 600, fontSize: 13 }}>{perm.label}</div>
-                                                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                                                {p === 'admin' ? 'Acesso total ao sistema' : p === 'member' ? 'Acesso padrão' : 'Apenas visualização'}
-                                                            </div>
-                                                        </div>
-                                                    </button>
-                                                );
-                                            })}
                                         </div>
                                     </div>
 
@@ -394,11 +340,11 @@ export default function ConfiguracoesPage() {
                                                 { path: '/administrativo', label: 'Administrativo' },
                                                 { path: '/calendario', label: 'Calendário' },
                                             ].map(mod => (
-                                                <label key={mod.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', opacity: formPermission === 'admin' ? 0.5 : 1 }}>
+                                                <label key={mod.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', opacity: formCategory === 'Admin Geral' ? 0.5 : 1 }}>
                                                     <input
                                                         type="checkbox"
-                                                        checked={formPermission === 'admin' || formModules.includes(mod.path)}
-                                                        disabled={formPermission === 'admin'}
+                                                        checked={formCategory === 'Admin Geral' || formModules.includes(mod.path)}
+                                                        disabled={formCategory === 'Admin Geral'}
                                                         onChange={(e) => {
                                                             if (e.target.checked) setFormModules(prev => [...prev, mod.path]);
                                                             else setFormModules(prev => prev.filter(p => p !== mod.path));
@@ -409,13 +355,19 @@ export default function ConfiguracoesPage() {
                                                 </label>
                                             ))}
                                         </div>
-                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Dashboard, Chat e Configurações estarão sempre acessíveis.{formPermission === 'admin' && ' Admins têm acesso a tudo.'}</div>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Dashboard, Chat e Notificações estão sempre acessíveis.{formCategory === 'Admin Geral' && ' Admin Geral tem acesso a tudo.'}</div>
                                     </div>
+
+                                    {formError && (
+                                        <div className="login-error" style={{ marginBottom: 12 }}>
+                                            {formError}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="settings-modal-footer">
                                     <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
-                                    <button className="btn btn-primary" onClick={modal.type === 'add' ? handleAdd : handleEdit} disabled={saving || !formName || !formEmail || !formRole}>
-                                        {saving ? 'Salvando...' : modal.type === 'add' ? 'Adicionar' : 'Salvar'}
+                                    <button className="btn btn-primary" onClick={handleAdd} disabled={saving || !formName || !formEmail || !formRole || !formCategory || !formPassword}>
+                                        {saving ? 'Criando...' : 'Criar Usuário'}
                                     </button>
                                 </div>
                             </div>
@@ -427,24 +379,25 @@ export default function ConfiguracoesPage() {
                         <div className="settings-modal-overlay" onClick={() => setModal(null)}>
                             <div className="settings-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
                                 <div className="settings-modal-header">
-                                    <h3>Remover Membro</h3>
+                                    <h3>Remover Usuário</h3>
                                     <button className="settings-action-btn" onClick={() => setModal(null)}>
                                         <X size={16} />
                                     </button>
                                 </div>
                                 <div className="settings-modal-body" style={{ textAlign: 'center', padding: '20px 24px' }}>
                                     <div style={{
-                                        width: 56, height: 56, borderRadius: '50%', background: modal.member.avatar_color,
+                                        width: 56, height: 56, borderRadius: '50%',
+                                        background: AVATAR_COLORS[modal.usuario.nome.charCodeAt(0) % AVATAR_COLORS.length],
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         fontSize: 20, fontWeight: 700, color: 'white', margin: '0 auto 16px'
                                     }}>
-                                        {modal.member.initials}
+                                        {getInitials(modal.usuario.nome)}
                                     </div>
                                     <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-                                        Remover {modal.member.name}?
+                                        Remover {modal.usuario.nome}?
                                     </div>
                                     <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                                        Esta ação não pode ser desfeita. O membro perderá acesso ao sistema.
+                                        Esta ação é permanente. O usuário perderá acesso completo ao sistema e sua conta de login será removida.
                                     </div>
                                 </div>
                                 <div className="settings-modal-footer">
