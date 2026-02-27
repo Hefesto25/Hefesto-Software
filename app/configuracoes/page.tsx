@@ -33,10 +33,11 @@ export default function ConfiguracoesPage() {
     const { data: categories, loading: loadingCategories, setData: setCategories } = useFinancialCategories();
     const { user } = useAuth();
     const { pushPermission, requestPushPermission } = useNotificationContext();
-    const { data: notifSettings, loading: loadingNotifSettings, refetch: refetchNotifSettings } = useNotificationSettings(user.id);
+    const { data: notifSettings, loading: loadingNotifSettings, refetch: refetchNotifSettings } = useNotificationSettings(user?.id ?? '');
 
     const [modal, setModal] = useState<ModalState>(null);
     const [saving, setSaving] = useState(false);
+    const userId = user?.id ?? '';
 
     // Tab State
     const [activeTab, setActiveTab] = useState<'equipe' | 'financas' | 'notificacoes'>('equipe');
@@ -562,7 +563,7 @@ export default function ConfiguracoesPage() {
                                             await requestPushPermission();
                                         } else {
                                             await upsertNotificationSettings({
-                                                usuario_id: user.id,
+                                                usuario_id: userId,
                                                 push_enabled: e.target.checked,
                                                 notif_tarefa_atribuida: notifSettings?.notif_tarefa_atribuida ?? true,
                                                 notif_tarefa_vencimento: notifSettings?.notif_tarefa_vencimento ?? true,
@@ -595,7 +596,7 @@ export default function ConfiguracoesPage() {
                                 checked={notifSettings?.notif_tarefa_atribuida ?? true}
                                 onChange={async (e) => {
                                     await upsertNotificationSettings({
-                                        usuario_id: user.id,
+                                        usuario_id: userId,
                                         push_enabled: notifSettings?.push_enabled ?? true,
                                         notif_tarefa_atribuida: e.target.checked,
                                         notif_tarefa_vencimento: notifSettings?.notif_tarefa_vencimento ?? true,
@@ -621,7 +622,7 @@ export default function ConfiguracoesPage() {
                                 checked={notifSettings?.notif_tarefa_vencimento ?? true}
                                 onChange={async (e) => {
                                     await upsertNotificationSettings({
-                                        usuario_id: user.id,
+                                        usuario_id: userId,
                                         push_enabled: notifSettings?.push_enabled ?? true,
                                         notif_tarefa_atribuida: notifSettings?.notif_tarefa_atribuida ?? true,
                                         notif_tarefa_vencimento: e.target.checked,
@@ -655,7 +656,7 @@ export default function ConfiguracoesPage() {
                                                 ? currentDays.filter(x => x !== d)
                                                 : [...currentDays, d].sort((a, b) => b - a);
                                             await upsertNotificationSettings({
-                                                usuario_id: user.id,
+                                                usuario_id: userId,
                                                 push_enabled: notifSettings?.push_enabled ?? true,
                                                 notif_tarefa_atribuida: notifSettings?.notif_tarefa_atribuida ?? true,
                                                 notif_tarefa_vencimento: notifSettings?.notif_tarefa_vencimento ?? true,
@@ -684,7 +685,7 @@ export default function ConfiguracoesPage() {
                                 checked={notifSettings?.notif_mencao_chat ?? true}
                                 onChange={async (e) => {
                                     await upsertNotificationSettings({
-                                        usuario_id: user.id,
+                                        usuario_id: userId,
                                         push_enabled: notifSettings?.push_enabled ?? true,
                                         notif_tarefa_atribuida: notifSettings?.notif_tarefa_atribuida ?? true,
                                         notif_tarefa_vencimento: notifSettings?.notif_tarefa_vencimento ?? true,

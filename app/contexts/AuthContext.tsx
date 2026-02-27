@@ -1,62 +1,144 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 
-export type UserCategory = 'Administrativa' | 'Financeira' | 'Operacional' | 'Comercial' | 'Jurídica' | 'Admin Geral';
+export type UserCategory = 'Admin Geral' | 'Administrativa' | 'Financeira' | 'Operacional' | 'Comercial';
 
-interface User {
+export interface UsuarioPerfil {
     id: string;
-    name: string;
-    category: UserCategory;
-    avatar_url?: string;
+    nome: string;
+    email: string;
+    cargo?: string;
+    categoria: UserCategory;
+    foto_url?: string;
+    modulos_acesso: string[];
+    // Computed
     initials: string;
-    allowed_modules?: string[];
 }
 
 interface AuthContextType {
-    user: User;
-    switchCategory: (category: UserCategory) => void;
+    user: UsuarioPerfil | null;
+    session: Session | null;
+    loading: boolean;
+    signOut: () => Promise<void>;
     getAllowedModules: () => string[];
 }
 
-const defaultUser: User = {
-    id: '1',
-    name: 'Marcel Sgarioni',
-    category: 'Admin Geral',
-    initials: 'MS',
-    avatar_url: '',
-    allowed_modules: ['/', '/comercial', '/financeiro', '/operacional', '/administrativo', '/juridica', '/calendario', '/chat', '/configuracoes']
-};
-
-// Map Categories to allowed routes
-const moduleAccessMap: Record<UserCategory, string[]> = {
-    'Admin Geral': ['/', '/comercial', '/financeiro', '/operacional', '/administrativo', '/juridica', '/calendario', '/chat', '/configuracoes'],
-    'Administrativa': ['/', '/administrativo', '/calendario', '/chat', '/configuracoes'],
-    'Financeira': ['/', '/financeiro', '/calendario', '/chat', '/configuracoes'],
-    'Operacional': ['/', '/operacional', '/calendario', '/chat', '/configuracoes'],
-    'Comercial': ['/', '/comercial', '/calendario', '/chat', '/configuracoes'],
-    'Jurídica': ['/', '/juridica', '/calendario', '/chat', '/configuracoes'],
-};
-
 const AuthContext = createContext<AuthContextType>({
-    user: defaultUser,
-    switchCategory: () => { },
-    getAllowedModules: () => moduleAccessMap['Admin Geral']
+    user: null,
+    session: null,
+    loading: true,
+    signOut: async () => { },
+    getAllowedModules: () => ['/'],
 });
 
+function getInitials(name: string): string {
+    return name
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(n => n[0].toUpperCase())
+        .join('');
+}
+
+const DEFAULT_MODULES_BY_CATEGORY: Record<UserCategory, string[]> = {
+    'Admin Geral': ['/', '/comercial', '/financeiro', '/operacional', '/administrativo', '/calendario', '/chat', '/configuracoes', '/notificacoes'],
+    'Administrativa': ['/', '/administrativo', '/calendario', '/chat', '/notificacoes'],
+    'Financeira': ['/', '/financeiro', '/calendario', '/chat', '/notificacoes'],
+    'Operacional': ['/', '/operacional', '/calendario', '/chat', '/notificacoes'],
+    'Comercial': ['/', '/comercial', '/calendario', '/chat', '/notificacoes'],
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const [user, setUser] = useState<User>(defaultUser);
+    const [user, setUser] = useState<UsuarioPerfil | null>(null);
+    const [session, setSession] = useState<Session | null>(null);
+    const [loading, setLoading] = useState(true);
+    const router = useRouter();
 
-    const switchCategory = (category: UserCategory) => {
-        setUser(prev => ({ ...prev, category, allowed_modules: moduleAccessMap[category] || moduleAccessMap['Admin Geral'] }));
-    };
+    const loadProfile = useCallback(async (userId: string) => {
+        try {
+            const { data, error } = await supabase
+                .from('usuarios')
+                .select('*')
+                .eq('id', userId)
+                .maybeSingle();
 
-    const getAllowedModules = () => {
-        return user.allowed_modules || moduleAccessMap[user.category];
-    };
+            if (error || !data) {
+                // If no profile found, create a minimal one from auth user
+                const { data: authUser } = await supabase.auth.getUser();
+                if (authUser?.user) {
+                    const fallback: UsuarioPerfil = {
+                        id: authUser.user.id,
+                        nome: authUser.user.email?.split('@')[0] || 'Usuário',
+                        email: authUser.user.email || '',
+                        categoria: 'Admin Geral',
+                        modulos_acesso: DEFAULT_MODULES_BY_CATEGORY['Admin Geral'],
+                        initials: getInitials(authUser.user.email?.split('@')[0] || 'U'),
+                    };
+                    setUser(fallback);
+                }
+                return;
+            }
+
+            const perfil: UsuarioPerfil = {
+                id: data.id,
+                nome: data.nome,
+                email: data.email,
+                cargo: data.cargo,
+                categoria: data.categoria as UserCategory,
+                foto_url: data.foto_url,
+                modulos_acesso: data.modulos_acesso?.length
+                    ? data.modulos_acesso
+                    : DEFAULT_MODULES_BY_CATEGORY[data.categoria as UserCategory] || ['/'],
+                initials: getInitials(data.nome),
+            };
+            setUser(perfil);
+        } catch (e) {
+            console.error('Error loading user profile:', e);
+        }
+    }, []);
+
+    useEffect(() => {
+        // Get initial session
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+            if (session?.user) {
+                loadProfile(session.user.id).finally(() => setLoading(false));
+            } else {
+                setLoading(false);
+            }
+        });
+
+        // Listen to auth state changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+            if (session?.user) {
+                loadProfile(session.user.id);
+            } else {
+                setUser(null);
+            }
+        });
+
+        return () => subscription.unsubscribe();
+    }, [loadProfile]);
+
+    const signOut = useCallback(async () => {
+        await supabase.auth.signOut();
+        setUser(null);
+        setSession(null);
+        router.replace('/login');
+    }, [router]);
+
+    const getAllowedModules = useCallback((): string[] => {
+        if (!user) return ['/'];
+        return user.modulos_acesso;
+    }, [user]);
 
     return (
-        <AuthContext.Provider value={{ user, switchCategory, getAllowedModules }}>
+        <AuthContext.Provider value={{ user, session, loading, signOut, getAllowedModules }}>
             {children}
         </AuthContext.Provider>
     );

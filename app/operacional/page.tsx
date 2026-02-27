@@ -96,7 +96,7 @@ export default function OperacionalPage() {
                         assignedMember.id,
                         'tarefa_atribuida',
                         'Nova tarefa atribuída',
-                        `Você foi atribuído à tarefa '${created.titulo}' por ${user.name}.`,
+                        `Você foi atribuído à tarefa '${created.titulo}' por ${user?.nome}.`,
                         '/operacional',
                         'operacional'
                     ).catch(console.error);
@@ -126,7 +126,7 @@ export default function OperacionalPage() {
                         assignedMember.id,
                         'tarefa_atribuida',
                         'Tarefa atribuída a você',
-                        `Você foi atribuído à tarefa '${updated.titulo}' por ${user.name}.`,
+                        `Você foi atribuído à tarefa '${updated.titulo}' por ${user?.nome}.`,
                         '/operacional',
                         'operacional'
                     ).catch(console.error);

@@ -74,6 +74,7 @@ export default function NotificacoesPage() {
     }, [notifications, filterTipo, filterPeriodo]);
 
     async function handleClearRead() {
+        if (!user?.id) return;
         setCleaning(true);
         try {
             await removeReadNotifications(user.id);

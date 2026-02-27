@@ -34,7 +34,8 @@ const NotificationContext = createContext<NotificationContextType>({
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
-    const { data: notifications, loading, setData, refetch } = useNotifications(user.id);
+    const userId = user?.id ?? '';
+    const { data: notifications, loading, setData, refetch } = useNotifications(userId);
     const [pushPermission, setPushPermission] = useState<NotificationPermission | 'default'>('default');
     const hasRequestedPermission = useRef(false);
 
@@ -51,10 +52,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             typeof window !== 'undefined' &&
             'Notification' in window &&
             window.Notification.permission === 'default' &&
-            !hasRequestedPermission.current
+            !hasRequestedPermission.current &&
+            userId // Only request if authenticated
         ) {
             hasRequestedPermission.current = true;
-            // Show a delayed friendly request
             const timer = setTimeout(() => {
                 if (window.Notification.permission === 'default') {
                     window.Notification.requestPermission().then(perm => {
@@ -64,7 +65,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             }, 5000);
             return () => clearTimeout(timer);
         }
-    }, []);
+    }, [userId]);
 
     const requestPushPermission = useCallback(async () => {
         if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -75,7 +76,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     // Subscribe to Supabase Realtime for new notifications
     useEffect(() => {
-        if (!user.id) return;
+        if (!userId) return;
 
         const channel = supabase
             .channel('notifications-realtime')
@@ -85,7 +86,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'notificacoes',
-                    filter: `usuario_id=eq.${user.id}`,
+                    filter: `usuario_id=eq.${userId}`,
                 },
                 (payload) => {
                     const newNotif = payload.new as Notification;
@@ -121,7 +122,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user.id, setData]);
+    }, [userId, setData]);
 
     const unreadCount = notifications.filter(n => !n.lida).length;
 
@@ -135,8 +136,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }, [setData]);
 
     const markAllAsRead = useCallback(async () => {
+        if (!userId) return;
         try {
-            await markAllRead(user.id);
+            await markAllRead(userId);
             setData((prev: Notification[]) => prev.map(n => ({
                 ...n,
                 lida: true,
@@ -145,7 +147,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         } catch (e) {
             console.error('Error marking all as read:', e);
         }
-    }, [user.id, setData]);
+    }, [userId, setData]);
 
     return (
         <NotificationContext.Provider

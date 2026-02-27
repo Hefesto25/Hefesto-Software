@@ -162,7 +162,7 @@ export default function AdministrativoPage() {
                             assignedMember.id,
                             'tarefa_atribuida',
                             'Demanda atribuída a você',
-                            `Você foi atribuído à demanda '${demandForm.titulo}' por ${user.name}.`,
+                            `Você foi atribuído à demanda '${demandForm.titulo}' por ${user?.nome}.`,
                             '/administrativo',
                             'administrativo'
                         ).catch(console.error);
@@ -180,7 +180,7 @@ export default function AdministrativoPage() {
                             assignedMember.id,
                             'tarefa_atribuida',
                             'Nova demanda atribuída',
-                            `Você foi atribuído à demanda '${created.titulo}' por ${user.name}.`,
+                            `Você foi atribuído à demanda '${created.titulo}' por ${user?.nome}.`,
                             '/administrativo',
                             'administrativo'
                         ).catch(console.error);

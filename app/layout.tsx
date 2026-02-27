@@ -11,7 +11,6 @@ import {
   DollarSign,
   MessageSquare,
   Bell,
-  ChevronRight,
   Briefcase,
   Wrench,
   TrendingUp,
@@ -20,6 +19,7 @@ import {
   Clock,
   AtSign,
   BellOff,
+  LogOut,
 } from 'lucide-react';
 import type { Notification } from '@/lib/types';
 
@@ -30,28 +30,18 @@ interface NavItem {
   badge?: number;
 }
 
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
-
-const navSections: NavSection[] = [
-  {
-    title: 'Principal',
-    items: [
-      { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-      { href: '/comercial', label: 'Comercial', icon: TrendingUp },
-      { href: '/financeiro', label: 'Financeiro', icon: DollarSign },
-      { href: '/operacional', label: 'Operacional', icon: Wrench },
-      { href: '/administrativo', label: 'Administrativo', icon: Briefcase },
-      { href: '/calendario', label: 'Calendário', icon: CalendarDays },
-      { href: '/chat', label: 'Chat', icon: MessageSquare, badge: 3 },
-    ],
-  },
+const allNavItems: NavItem[] = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/comercial', label: 'Comercial', icon: TrendingUp },
+  { href: '/financeiro', label: 'Financeiro', icon: DollarSign },
+  { href: '/operacional', label: 'Operacional', icon: Wrench },
+  { href: '/administrativo', label: 'Administrativo', icon: Briefcase },
+  { href: '/calendario', label: 'Calendário', icon: CalendarDays },
+  { href: '/chat', label: 'Chat', icon: MessageSquare },
 ];
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
-  '/': { title: 'Dashboard Financeiro', subtitle: 'Visão geral da sua empresa' },
+  '/': { title: 'Dashboard', subtitle: 'Visão geral da sua empresa' },
   '/financeiro': { title: 'Controle Financeiro', subtitle: 'Receitas, custos e despesas' },
   '/comercial': { title: 'Comercial', subtitle: 'Gestão de vendas' },
   '/operacional': { title: 'Operacional', subtitle: 'Gestão operacional' },
@@ -62,7 +52,6 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
   '/notificacoes': { title: 'Notificações', subtitle: 'Histórico completo de notificações' },
 };
 
-/** Relative time formatting in Portuguese */
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
@@ -71,7 +60,6 @@ function formatRelativeTime(dateStr: string): string {
   const diffMin = Math.floor(diffSec / 60);
   const diffHours = Math.floor(diffMin / 60);
   const diffDays = Math.floor(diffHours / 24);
-
   if (diffSec < 60) return 'agora';
   if (diffMin < 60) return `há ${diffMin} minuto${diffMin > 1 ? 's' : ''}`;
   if (diffHours < 24) return `há ${diffHours} hora${diffHours > 1 ? 's' : ''}`;
@@ -82,14 +70,10 @@ function formatRelativeTime(dateStr: string): string {
 
 function NotificationIcon({ tipo }: { tipo: Notification['tipo'] }) {
   switch (tipo) {
-    case 'tarefa_atribuida':
-      return <ClipboardList size={16} />;
-    case 'tarefa_vencimento':
-      return <Clock size={16} />;
-    case 'mencao_chat':
-      return <AtSign size={16} />;
-    default:
-      return <Bell size={16} />;
+    case 'tarefa_atribuida': return <ClipboardList size={16} />;
+    case 'tarefa_vencimento': return <Clock size={16} />;
+    case 'mencao_chat': return <AtSign size={16} />;
+    default: return <Bell size={16} />;
   }
 }
 
@@ -102,26 +86,14 @@ function NotificationBell() {
   const displayNotifications = notifications.slice(0, 20);
 
   async function handleNotificationClick(notif: Notification) {
-    if (!notif.lida) {
-      await markAsRead(notif.id);
-    }
+    if (!notif.lida) await markAsRead(notif.id);
     setIsOpen(false);
-    if (notif.redirecionamento) {
-      router.push(notif.redirecionamento);
-    }
-  }
-
-  async function handleMarkAllAsRead() {
-    await markAllAsRead();
+    if (notif.redirecionamento) router.push(notif.redirecionamento);
   }
 
   return (
     <div className="notification-bell-wrapper" ref={panelRef}>
-      <button
-        className="header-action-btn"
-        onClick={() => setIsOpen(!isOpen)}
-        title="Notificações"
-      >
+      <button className="header-action-btn" onClick={() => setIsOpen(!isOpen)} title="Notificações">
         <Bell size={18} />
         {unreadCount > 0 && (
           <span className="notification-badge" key={unreadCount}>
@@ -137,12 +109,9 @@ function NotificationBell() {
             <div className="notification-panel-header">
               <h3>Notificações</h3>
               {unreadCount > 0 && (
-                <button onClick={handleMarkAllAsRead}>
-                  Marcar todas como lidas
-                </button>
+                <button onClick={markAllAsRead}>Marcar todas como lidas</button>
               )}
             </div>
-
             <div className="notification-panel-list">
               {displayNotifications.length === 0 ? (
                 <div className="notification-empty">
@@ -162,19 +131,14 @@ function NotificationBell() {
                     <div className="notification-item-content">
                       <div className="notification-item-title">{notif.titulo}</div>
                       <div className="notification-item-message">{notif.mensagem}</div>
-                      <div className="notification-item-time">
-                        {formatRelativeTime(notif.criada_em)}
-                      </div>
+                      <div className="notification-item-time">{formatRelativeTime(notif.criada_em)}</div>
                     </div>
                   </div>
                 ))
               )}
             </div>
-
             <div className="notification-panel-footer">
-              <Link href="/notificacoes" onClick={() => setIsOpen(false)}>
-                Ver todas
-              </Link>
+              <Link href="/notificacoes" onClick={() => setIsOpen(false)}>Ver todas</Link>
             </div>
           </div>
         </>
@@ -185,7 +149,7 @@ function NotificationBell() {
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, getAllowedModules } = useAuth();
+  const { user, loading, signOut, getAllowedModules } = useAuth();
   const allowed = getAllowedModules();
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
@@ -205,6 +169,32 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
   const currentPage = pageTitles[pathname] || pageTitles['/'];
 
+  // Login page: render standalone without sidebar
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
+
+  // Show loading screen while auth resolves
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 36, fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}>H</div>
+          <div style={{ fontSize: 13 }}>Carregando...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if no user (middleware should redirect)
+  if (!user) return null;
+
+  // Filter nav items by user's allowed modules
+  const visibleNavItems = allNavItems.filter(item => allowed.includes(item.href));
+
+  // Check if user can access current route
+  const canAccessRoute = allowed.includes(pathname) || pathname === '/' || pathname === '/notificacoes';
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -217,48 +207,52 @@ function AppContent({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {navSections.map((section) => {
-          const filteredItems = section.items.filter(item => allowed.includes(item.href));
-          if (filteredItems.length === 0) return null;
+        <div className="sidebar-section">
+          <nav className="sidebar-nav">
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`sidebar-link ${isActive ? 'active' : ''}`}
+                >
+                  <Icon size={18} />
+                  {item.label}
+                  {item.badge && <span className="sidebar-badge">{item.badge}</span>}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
 
-          return (
-            <div key={section.title} className="sidebar-section">
-              {section.title !== 'Principal' && (
-                <div className="sidebar-section-title">{section.title}</div>
-              )}
-              <nav className="sidebar-nav">
-                {filteredItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href + item.label}
-                      href={item.href}
-                      className={`sidebar-link ${isActive ? 'active' : ''}`}
-                    >
-                      <Icon size={18} />
-                      {item.label}
-                      {item.badge && <span className="sidebar-badge">{item.badge}</span>}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-          );
-        })}
-
-        <div style={{ marginTop: 'auto', padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Link href="/configuracoes" className="sidebar-user" style={{ textDecoration: 'none', cursor: 'pointer', padding: 0, flex: 1 }}>
-            {user.avatar_url ? (
-              <img src={user.avatar_url} alt="Profile" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
+        {/* User profile + logout */}
+        <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-default)' }}>
+          <Link
+            href="/configuracoes"
+            className="sidebar-user"
+            style={{ textDecoration: 'none', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}
+          >
+            {user.foto_url ? (
+              <img src={user.foto_url} alt="Perfil" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }} />
             ) : (
               <div className="sidebar-avatar">{user.initials}</div>
             )}
             <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{user.name}</div>
-              <div className="sidebar-user-role" style={{ color: 'var(--primary)' }}>{user.category}</div>
+              <div className="sidebar-user-name">{user.nome}</div>
+              <div className="sidebar-user-role">{user.cargo || user.categoria}</div>
             </div>
           </Link>
+          <button
+            onClick={signOut}
+            className="sidebar-link"
+            style={{ width: '100%', borderTop: '1px solid var(--border-default)', borderRadius: 0, color: 'var(--text-muted)', padding: '10px 16px' }}
+            title="Sair do sistema"
+          >
+            <LogOut size={16} />
+            Sair
+          </button>
         </div>
       </aside>
 
@@ -273,7 +267,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
           </div>
           <div className="header-actions">
             {formattedTime && (
-              <div className="header-time" style={{ color: 'var(--text-muted)', fontSize: '14px', marginRight: '16px' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '13px', marginRight: '16px' }}>
                 {formattedTime}
               </div>
             )}
@@ -281,10 +275,12 @@ function AppContent({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <div className="page-content">
-          {!allowed.includes(pathname) && pathname !== '/' && pathname !== '/notificacoes' ? (
+          {!canAccessRoute ? (
             <div style={{ textAlign: 'center', paddingTop: 100 }}>
-              <h2>Acesso Negado</h2>
-              <p className="text-muted">A categoria atual ({user.category}) não tem acesso a esta página.</p>
+              <h2 style={{ marginBottom: 12 }}>Acesso Negado</h2>
+              <p style={{ color: 'var(--text-muted)' }}>
+                Você não tem permissão para acessar esta área.
+              </p>
             </div>
           ) : (
             children
