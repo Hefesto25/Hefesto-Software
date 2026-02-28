@@ -61,22 +61,45 @@ export interface Task {
     created_at?: string;
 }
 
-export interface Channel {
+export interface Canal {
     id: string;
-    name: string;
-    description: string;
-    unread: number;
-    created_at?: string;
+    nome: string;
+    descricao: string | null;
+    tipo: 'canal' | 'grupo_projeto';
+    criador_id: string | null;
+    created_at: string;
 }
 
-export interface ChatMessage {
+export interface CanalParticipante {
+    canal_id: string;
+    usuario_id: string;
+    adicionado_em: string;
+}
+
+export interface Mensagem {
     id: string;
-    channel_id: string;
-    author: string;
-    avatar_color: string;
-    text: string;
-    time: string;
-    created_at?: string;
+    canal_id: string;
+    autor_id: string | null;
+    conteudo: string | null;
+    tipo: 'texto' | 'imagem' | 'arquivo';
+    arquivo_url: string | null;
+    arquivo_nome: string | null;
+    arquivo_tamanho: number | null;
+    resposta_de: string | null;
+    deletada: boolean;
+    created_at: string;
+    // Joined fields (populated via select)
+    autor?: {
+        id: string;
+        nome: string;
+        email: string;
+        foto_url: string | null;
+    };
+    mensagem_original?: {
+        id: string;
+        conteudo: string | null;
+        autor?: { nome: string };
+    };
 }
 
 export interface FinancialData {
@@ -317,4 +340,40 @@ export interface NotificationSettings {
     notif_tarefa_vencimento: boolean;
     notif_mencao_chat: boolean;
     vencimento_dias_antes: string;
+}
+
+// Template Module
+export interface TemplateCategoria {
+    id: string;
+    nome: string;
+    tipo: 'modelo' | 'site';
+    created_at: string;
+}
+
+export interface TemplateModelo {
+    id: string;
+    nome: string;
+    descricao: string | null;
+    categoria_id: string | null;
+    imagem_url: string | null;
+    url_demo: string | null;
+    url_repositorio: string | null;
+    tecnologias: string[];
+    status: 'ativo' | 'em_desenvolvimento' | 'arquivado';
+    responsavel_id: string | null;
+    created_at: string;
+    // Joins
+    categoria?: TemplateCategoria;
+    responsavel?: { id: string; nome: string; email: string; foto_url: string | null };
+}
+
+export interface TemplateSite {
+    id: string;
+    nome: string;
+    url: string;
+    descricao: string | null;
+    categoria_id: string | null;
+    created_at: string;
+    // Join
+    categoria?: TemplateCategoria;
 }

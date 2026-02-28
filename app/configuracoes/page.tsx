@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, Shield, User, Eye, X, Check, Briefcase, Bell, Mail, Calendar } from 'lucide-react';
 import {
-    useUsuarios, createUsuarioViaEdge, deleteUsuarioViaEdge,
+    useUsuarios, createUsuarioViaSignUp, updateUsuario, deleteUsuarioViaEdge,
     useFinancialTypes, useFinancialCategories,
     addFinancialType, removeFinancialType,
     addFinancialCategory, removeFinancialCategory,
@@ -36,6 +36,15 @@ const CATEGORIA_LABELS: Record<string, string> = {
 
 type ModalState = { type: 'add' } | { type: 'edit'; usuario: UsuarioDB } | { type: 'delete'; usuario: UsuarioDB } | null;
 
+const ALL_MODULES = [
+    { path: '/comercial', label: 'Comercial' },
+    { path: '/financeiro', label: 'Financeiro' },
+    { path: '/operacional', label: 'Operacional' },
+    { path: '/administrativo', label: 'Administrativo' },
+    { path: '/calendario', label: 'Calendário' },
+    { path: '/configuracoes', label: 'Configurações' },
+];
+
 export default function ConfiguracoesPage() {
     const { data: usuarios, loading, setData: setUsuarios, refetch: refetchUsuarios } = useUsuarios();
     const { data: types, loading: loadingTypes, setData: setTypes } = useFinancialTypes();
@@ -49,6 +58,7 @@ export default function ConfiguracoesPage() {
     const [formError, setFormError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
     const userId = user?.id ?? '';
+    const isAdminGeral = user?.categoria === 'Admin Geral';
 
     // Tab State
     const [activeTab, setActiveTab] = useState<'equipe' | 'financas' | 'notificacoes'>('equipe');
@@ -57,13 +67,16 @@ export default function ConfiguracoesPage() {
     const [newType, setNewType] = useState('');
     const [newCategory, setNewCategory] = useState('');
 
-    // Form state
+    // Form state — creation (simplified)
     const [formName, setFormName] = useState('');
     const [formEmail, setFormEmail] = useState('');
-    const [formRole, setFormRole] = useState('');
-    const [formCategory, setFormCategory] = useState('Operacional');
-    const [formModules, setFormModules] = useState<string[]>(['/', '/chat', '/notificacoes']);
     const [formPassword, setFormPassword] = useState('');
+
+    // Form state — editing
+    const [editName, setEditName] = useState('');
+    const [editRole, setEditRole] = useState('');
+    const [editCategory, setEditCategory] = useState('Operacional');
+    const [editModules, setEditModules] = useState<string[]>([]);
 
     function showToast(msg: string) {
         setToast(msg);
@@ -73,17 +86,27 @@ export default function ConfiguracoesPage() {
     function openAddModal() {
         setFormName('');
         setFormEmail('');
-        setFormRole('');
-        setFormCategory('Operacional');
-        setFormModules(['/', '/chat', '/notificacoes']);
         setFormPassword('');
         setFormError(null);
         setModal({ type: 'add' });
     }
 
+    function openEditModal(usuario: UsuarioDB) {
+        setEditName(usuario.nome);
+        setEditRole(usuario.cargo || '');
+        setEditCategory(usuario.categoria || 'Operacional');
+        setEditModules(usuario.modulos_acesso || []);
+        setFormError(null);
+        setModal({ type: 'edit', usuario });
+    }
+
     async function handleAdd() {
-        if (!formName || !formEmail || !formRole || !formCategory) {
-            setFormError('Preencha todos os campos obrigatórios.');
+        if (!isAdminGeral) {
+            setFormError('Apenas Admins Gerais podem criar usuários.');
+            return;
+        }
+        if (!formName || !formEmail) {
+            setFormError('Preencha nome e e-mail.');
             return;
         }
         if (!formPassword || formPassword.length < 6) {
@@ -93,20 +116,10 @@ export default function ConfiguracoesPage() {
         setSaving(true);
         setFormError(null);
         try {
-            // Compute final modules: admin gets all; always include /, /chat, /notificacoes
-            const baseModules = ['/', '/chat', '/notificacoes', '/configuracoes'];
-            const allModules = ['/', '/comercial', '/financeiro', '/operacional', '/administrativo', '/calendario', '/chat', '/configuracoes', '/notificacoes'];
-            const finalModules = formCategory === 'Admin Geral'
-                ? allModules
-                : [...new Set([...baseModules, ...formModules])];
-
-            const result = await createUsuarioViaEdge({
+            const result = await createUsuarioViaSignUp({
                 email: formEmail.trim(),
                 password: formPassword,
                 nome: formName.trim(),
-                cargo: formRole.trim(),
-                categoria: formCategory,
-                modulos_acesso: finalModules,
             });
 
             if (!result.success) {
@@ -115,12 +128,59 @@ export default function ConfiguracoesPage() {
                 return;
             }
 
+            // Small delay to let the trigger create the profile
+            await new Promise(r => setTimeout(r, 1500));
             await refetchUsuarios();
             setModal(null);
             showToast(`Usuário ${formName} criado com sucesso.`);
         } catch (e) {
             console.error(e);
             setFormError('Erro inesperado ao criar usuário.');
+        }
+        setSaving(false);
+    }
+
+    async function handleEdit() {
+        if (modal?.type !== 'edit') return;
+        setSaving(true);
+        setFormError(null);
+        try {
+            const isAdmin = user?.modulos_acesso?.includes('/configuracoes');
+            const isSelf = modal.usuario.id === user?.id;
+
+            // Build update payload based on permissions
+            const updates: Record<string, unknown> = { nome: editName.trim() };
+
+            if (isAdmin && !isSelf) {
+                // Admin editing another user: can change everything
+                updates.cargo = editRole.trim();
+                updates.categoria = editCategory;
+                // Always include base modules
+                const baseModules = ['/', '/chat', '/notificacoes'];
+                updates.modulos_acesso = [...new Set([...baseModules, ...editModules])];
+            } else if (isAdmin && isSelf) {
+                // Admin editing themselves
+                updates.cargo = editRole.trim();
+                updates.categoria = editCategory;
+                const baseModules = ['/', '/chat', '/notificacoes'];
+                updates.modulos_acesso = [...new Set([...baseModules, ...editModules])];
+            }
+            // Non-admin self-edit: only nome is sent (RLS protects the rest)
+
+            const result = await updateUsuario(modal.usuario.id, updates as Partial<UsuarioDB>);
+
+            if (!result.success) {
+                setFormError(result.error || 'Erro ao atualizar perfil.');
+                setSaving(false);
+                return;
+            }
+
+            await refetchUsuarios();
+            setModal(null);
+            showToast(`Perfil de ${editName} atualizado com sucesso.`);
+        } catch (e) {
+            console.error(e);
+            setFormError('Erro inesperado ao atualizar perfil.');
         }
         setSaving(false);
     }
@@ -235,9 +295,11 @@ export default function ConfiguracoesPage() {
                 <>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{usuarios.length} usuário{usuarios.length !== 1 ? 's' : ''} cadastrado{usuarios.length !== 1 ? 's' : ''}</div>
-                        <button className="btn btn-primary" onClick={openAddModal}>
-                            <Plus size={14} /> Criar Usuário
-                        </button>
+                        {isAdminGeral && (
+                            <button className="btn btn-primary" onClick={openAddModal}>
+                                <Plus size={14} /> Criar Usuário
+                            </button>
+                        )}
                     </div>
 
                     {/* User list */}
@@ -270,6 +332,13 @@ export default function ConfiguracoesPage() {
                                 </div>
                                 <div className="settings-member-actions">
                                     <button
+                                        className="settings-action-btn"
+                                        onClick={() => openEditModal(u)}
+                                        title="Editar"
+                                    >
+                                        <Pencil size={14} />
+                                    </button>
+                                    <button
                                         className="settings-action-btn danger"
                                         onClick={() => setModal({ type: 'delete', usuario: u })}
                                         title="Remover"
@@ -287,7 +356,7 @@ export default function ConfiguracoesPage() {
                         )}
                     </div>
 
-                    {/* Add Modal */}
+                    {/* Add Modal — simplified: only nome, email, senha */}
                     {modal?.type === 'add' && (
                         <div className="settings-modal-overlay" onClick={() => setModal(null)}>
                             <div className="settings-modal" onClick={e => e.stopPropagation()}>
@@ -313,49 +382,8 @@ export default function ConfiguracoesPage() {
                                         <input className="form-input" type="text" value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder="ex: Mudar@123" />
                                     </div>
 
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 14 }}>
-                                        <div className="form-group">
-                                            <label className="form-label">Cargo *</label>
-                                            <input className="form-input" type="text" value={formRole} onChange={e => setFormRole(e.target.value)} placeholder="ex: Desenvolvedor" />
-                                        </div>
-                                        <div className="form-group">
-                                            <label className="form-label">Categoria *</label>
-                                            <select className="form-select" value={formCategory} onChange={e => setFormCategory(e.target.value)}>
-                                                <option value="Admin Geral">Admin Geral</option>
-                                                <option value="Administrativa">Administrativa</option>
-                                                <option value="Comercial">Comercial</option>
-                                                <option value="Financeira">Financeira</option>
-                                                <option value="Operacional">Operacional</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group" style={{ marginBottom: 20 }}>
-                                        <label className="form-label">Acesso aos Módulos</label>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--bg-secondary)', padding: 12, borderRadius: 8 }}>
-                                            {[
-                                                { path: '/comercial', label: 'Comercial' },
-                                                { path: '/financeiro', label: 'Financeiro' },
-                                                { path: '/operacional', label: 'Operacional' },
-                                                { path: '/administrativo', label: 'Administrativo' },
-                                                { path: '/calendario', label: 'Calendário' },
-                                            ].map(mod => (
-                                                <label key={mod.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', opacity: formCategory === 'Admin Geral' ? 0.5 : 1 }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={formCategory === 'Admin Geral' || formModules.includes(mod.path)}
-                                                        disabled={formCategory === 'Admin Geral'}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) setFormModules(prev => [...prev, mod.path]);
-                                                            else setFormModules(prev => prev.filter(p => p !== mod.path));
-                                                        }}
-                                                        style={{ accentColor: 'var(--primary)', width: 16, height: 16 }}
-                                                    />
-                                                    {mod.label}
-                                                </label>
-                                            ))}
-                                        </div>
-                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Dashboard, Chat e Notificações estão sempre acessíveis.{formCategory === 'Admin Geral' && ' Admin Geral tem acesso a tudo.'}</div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg-secondary)', padding: '10px 14px', borderRadius: 8, marginBottom: 14, lineHeight: 1.5 }}>
+                                        💡 Cargo, categoria e módulos de acesso podem ser configurados depois clicando em <strong>Editar</strong> no perfil do usuário.
                                     </div>
 
                                     {formError && (
@@ -366,13 +394,100 @@ export default function ConfiguracoesPage() {
                                 </div>
                                 <div className="settings-modal-footer">
                                     <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
-                                    <button className="btn btn-primary" onClick={handleAdd} disabled={saving || !formName || !formEmail || !formRole || !formCategory || !formPassword}>
+                                    <button className="btn btn-primary" onClick={handleAdd} disabled={saving || !formName || !formEmail || !formPassword}>
                                         {saving ? 'Criando...' : 'Criar Usuário'}
                                     </button>
                                 </div>
                             </div>
                         </div>
                     )}
+
+                    {/* Edit Modal — admin sees all fields, self only sees nome */}
+                    {modal?.type === 'edit' && (() => {
+                        const isAdmin = user?.modulos_acesso?.includes('/configuracoes');
+                        const isSelf = modal.usuario.id === user?.id;
+                        const canEditFull = isAdmin; // Admin can edit all fields for everyone
+                        const canEditRestricted = !isAdmin && isSelf; // Non-admin self: only nome
+                        return (
+                            <div className="settings-modal-overlay" onClick={() => setModal(null)}>
+                                <div className="settings-modal" onClick={e => e.stopPropagation()}>
+                                    <div className="settings-modal-header">
+                                        <h3>Editar Perfil — {modal.usuario.nome}</h3>
+                                        <button className="settings-action-btn" onClick={() => setModal(null)}>
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                    <div className="settings-modal-body">
+                                        <div className="form-group" style={{ marginBottom: 14 }}>
+                                            <label className="form-label">Nome Completo</label>
+                                            <input className="form-input" type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Nome completo" />
+                                        </div>
+
+                                        {canEditFull && (
+                                            <>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 14 }}>
+                                                    <div className="form-group">
+                                                        <label className="form-label">Cargo</label>
+                                                        <input className="form-input" type="text" value={editRole} onChange={e => setEditRole(e.target.value)} placeholder="ex: Desenvolvedor" />
+                                                    </div>
+                                                    <div className="form-group">
+                                                        <label className="form-label">Categoria</label>
+                                                        <select className="form-select" value={editCategory} onChange={e => setEditCategory(e.target.value)}>
+                                                            <option value="Admin Geral">Admin Geral</option>
+                                                            <option value="Administrativa">Administrativa</option>
+                                                            <option value="Comercial">Comercial</option>
+                                                            <option value="Financeira">Financeira</option>
+                                                            <option value="Operacional">Operacional</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div className="form-group" style={{ marginBottom: 20 }}>
+                                                    <label className="form-label">Acesso aos Módulos</label>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, background: 'var(--bg-secondary)', padding: 12, borderRadius: 8 }}>
+                                                        {ALL_MODULES.map(mod => (
+                                                            <label key={mod.path} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', opacity: editCategory === 'Admin Geral' ? 0.5 : 1 }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={editCategory === 'Admin Geral' || editModules.includes(mod.path)}
+                                                                    disabled={editCategory === 'Admin Geral'}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) setEditModules(prev => [...prev, mod.path]);
+                                                                        else setEditModules(prev => prev.filter(p => p !== mod.path));
+                                                                    }}
+                                                                    style={{ accentColor: 'var(--primary)', width: 16, height: 16 }}
+                                                                />
+                                                                {mod.label}
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Dashboard, Chat e Notificações estão sempre acessíveis.{editCategory === 'Admin Geral' && ' Admin Geral tem acesso a tudo.'}</div>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {canEditRestricted && (
+                                            <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg-secondary)', padding: '10px 14px', borderRadius: 8, marginBottom: 14, lineHeight: 1.5 }}>
+                                                🔒 Cargo, categoria e módulos de acesso só podem ser alterados por um administrador.
+                                            </div>
+                                        )}
+
+                                        {formError && (
+                                            <div className="login-error" style={{ marginBottom: 12 }}>
+                                                {formError}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="settings-modal-footer">
+                                        <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
+                                        <button className="btn btn-primary" onClick={handleEdit} disabled={saving || !editName}>
+                                            {saving ? 'Salvando...' : 'Salvar Alterações'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Delete confirmation modal */}
                     {modal?.type === 'delete' && (

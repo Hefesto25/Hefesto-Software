@@ -1,30 +1,450 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Send, Hash, Plus, Smile, Paperclip } from 'lucide-react';
-import { useChannels, useMessages, useTeam } from '@/lib/hooks';
-import type { Channel } from '@/lib/types';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Send, Hash, Plus, Paperclip, X, Users, Trash2, Settings, Reply, Download, FileText, Image as ImageIcon, FolderKanban } from 'lucide-react';
+import {
+    useCanais, useCanalParticipantes, useMensagens, useUsuarios,
+    createCanal, updateCanal, deleteCanal, addParticipante, removeParticipante,
+    sendMensagem, deleteMensagem, createMentionNotification, uploadChatFile
+} from '@/lib/hooks';
+import type { Canal, Mensagem } from '@/lib/types';
+import type { UsuarioDB } from '@/lib/hooks';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+
+const AVATAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#EF4444', '#06B6D4', '#14B8A6', '#6366F1', '#F97316'];
+function getColor(name: string) { return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]; }
+function getInitials(name: string) { return name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase(); }
+
+function formatTime(dateStr: string) {
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateSeparator(dateStr: string) {
+    const d = new Date(dateStr);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return 'Hoje';
+    if (d.toDateString() === yesterday.toDateString()) return 'Ontem';
+    return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+type ModalType = 'create' | 'edit' | 'participants' | 'deleteConfirm' | null;
 
 export default function ChatPage() {
-    const { data: channels, loading: loadingChannels } = useChannels();
-    const { data: team, loading: loadingTeam } = useTeam();
-    const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+    const { user } = useAuth();
+    const userId = user?.id;
+    const { data: canais, loading: loadingCanais, setData: setCanais, refetch: refetchCanais } = useCanais(userId);
+    const { data: allUsuarios } = useUsuarios();
+    const [activeCanalId, setActiveCanalId] = useState<string | null>(null);
+    const { data: mensagens, loading: loadingMensagens, setData: setMensagens, refetch: refetchMensagens } = useMensagens(activeCanalId);
+    const { data: participantes, refetch: refetchParticipantes } = useCanalParticipantes(activeCanalId);
+
     const [messageText, setMessageText] = useState('');
+    const [modal, setModal] = useState<ModalType>(null);
+    const [saving, setSaving] = useState(false);
+    const [replyTo, setReplyTo] = useState<Mensagem | null>(null);
+    const [showParticipantDropdown, setShowParticipantDropdown] = useState(false);
 
-    // Set initial channel when channels load
+    // Create/Edit form state
+    const [formNome, setFormNome] = useState('');
+    const [formDescricao, setFormDescricao] = useState('');
+    const [formTipo, setFormTipo] = useState<'canal' | 'grupo_projeto'>('canal');
+    const [formParticipantes, setFormParticipantes] = useState<string[]>([]);
+
+    // Mention state
+    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+    const [mentionIdx, setMentionIdx] = useState(0);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Presence state
+    const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+
+    // Set initial channel
     useEffect(() => {
-        if (channels.length > 0 && !activeChannelId) {
-            setActiveChannelId(channels[0].id);
+        if (canais.length > 0 && !activeCanalId) setActiveCanalId(canais[0].id);
+    }, [canais, activeCanalId]);
+
+    // Scroll to bottom on new messages
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [mensagens]);
+
+    // Realtime: subscribe to new messages for active channel
+    useEffect(() => {
+        if (!activeCanalId) return;
+        const channel = supabase
+            .channel(`chat-messages-${activeCanalId}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'mensagens',
+                filter: `canal_id=eq.${activeCanalId}`,
+            }, async (payload) => {
+                // Fetch the full message with author join
+                const { data } = await supabase
+                    .from('mensagens')
+                    .select('*, autor:usuarios!autor_id(id, nome, email, foto_url)')
+                    .eq('id', payload.new.id)
+                    .single();
+                if (data) {
+                    setMensagens((prev: Mensagem[]) => {
+                        if (prev.some(m => m.id === data.id)) return prev;
+                        return [...prev, data as Mensagem];
+                    });
+                }
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'mensagens',
+                filter: `canal_id=eq.${activeCanalId}`,
+            }, (payload) => {
+                setMensagens((prev: Mensagem[]) =>
+                    prev.map(m => m.id === payload.new.id ? { ...m, ...payload.new } as Mensagem : m)
+                );
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [activeCanalId, setMensagens]);
+
+    // Presence tracking
+    useEffect(() => {
+        if (!userId) return;
+        const presenceChannel = supabase.channel('online-users', { config: { presence: { key: userId } } });
+
+        presenceChannel
+            .on('presence', { event: 'sync' }, () => {
+                const state = presenceChannel.presenceState();
+                const ids = new Set<string>();
+                Object.keys(state).forEach(k => ids.add(k));
+                setOnlineUserIds(ids);
+            })
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    await presenceChannel.track({ user_id: userId, online_at: new Date().toISOString() });
+                }
+            });
+
+        // Inactivity timeout (5 minutes)
+        let inactivityTimer: NodeJS.Timeout;
+        const resetTimer = () => {
+            clearTimeout(inactivityTimer);
+            presenceChannel.track({ user_id: userId, online_at: new Date().toISOString() });
+            inactivityTimer = setTimeout(() => {
+                presenceChannel.untrack();
+            }, 5 * 60 * 1000);
+        };
+        window.addEventListener('mousemove', resetTimer);
+        window.addEventListener('keydown', resetTimer);
+        resetTimer();
+
+        return () => {
+            presenceChannel.untrack();
+            supabase.removeChannel(presenceChannel);
+            clearTimeout(inactivityTimer);
+            window.removeEventListener('mousemove', resetTimer);
+            window.removeEventListener('keydown', resetTimer);
+        };
+    }, [userId]);
+
+    const activeCanal = canais.find(c => c.id === activeCanalId);
+    const onlineMembersCount = participantes.filter(p => onlineUserIds.has(p.usuario_id)).length;
+
+    // Mention logic
+    const mentionMembers = useMemo(() => {
+        if (mentionQuery === null) return [];
+        return participantes
+            .filter(p => p.usuario?.nome.toLowerCase().includes(mentionQuery.toLowerCase()) && p.usuario_id !== userId)
+            .slice(0, 6);
+    }, [mentionQuery, participantes, userId]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const val = e.target.value;
+        setMessageText(val);
+        // Check for @ mention
+        const cursorPos = e.target.selectionStart;
+        const textBeforeCursor = val.slice(0, cursorPos);
+        const atMatch = textBeforeCursor.match(/@(\w*)$/);
+        if (atMatch) {
+            setMentionQuery(atMatch[1]);
+            setMentionIdx(0);
+        } else {
+            setMentionQuery(null);
         }
-    }, [channels, activeChannelId]);
+    };
 
-    const { data: channelMessages, loading: loadingMessages } = useMessages(activeChannelId);
+    const insertMention = (userName: string) => {
+        if (!inputRef.current) return;
+        const cursorPos = inputRef.current.selectionStart;
+        const textBefore = messageText.slice(0, cursorPos);
+        const textAfter = messageText.slice(cursorPos);
+        const newBefore = textBefore.replace(/@\w*$/, `@${userName} `);
+        setMessageText(newBefore + textAfter);
+        setMentionQuery(null);
+        inputRef.current.focus();
+    };
 
-    if (loadingChannels || loadingTeam) {
+    // Send message
+    const handleSend = async () => {
+        if (!messageText.trim() || !activeCanalId || !userId || !user) return;
+
+        const text = messageText.trim();
+        setMessageText('');
+        setReplyTo(null);
+        setMentionQuery(null);
+
+        const result = await sendMensagem({
+            canal_id: activeCanalId,
+            autor_id: userId,
+            conteudo: text,
+            resposta_de: replyTo?.id || undefined,
+        });
+
+        // Process mentions for notifications
+        if (result.success && result.mensagem) {
+            const mentionRegex = /@(\S+)/g;
+            let match;
+            while ((match = mentionRegex.exec(text)) !== null) {
+                const mentionedName = match[1];
+                const mentionedUser = participantes.find(
+                    p => p.usuario?.nome.toLowerCase().startsWith(mentionedName.toLowerCase())
+                );
+                if (mentionedUser && mentionedUser.usuario_id !== userId) {
+                    await createMentionNotification({
+                        mencionado_id: mentionedUser.usuario_id,
+                        autor_nome: user.nome,
+                        canal_nome: activeCanal?.nome || '',
+                        canal_id: activeCanalId,
+                        mensagem_id: result.mensagem.id,
+                        trecho: text,
+                    });
+                }
+            }
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (mentionQuery !== null && mentionMembers.length > 0) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx(i => Math.min(i + 1, mentionMembers.length - 1)); return; }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIdx(i => Math.max(i - 1, 0)); return; }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                insertMention(mentionMembers[mentionIdx].usuario?.nome || '');
+                return;
+            }
+            if (e.key === 'Escape') { setMentionQuery(null); return; }
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    };
+
+    // File upload
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !activeCanalId || !userId) return;
+        if (file.size > 10 * 1024 * 1024) { alert('Tamanho máximo: 10MB'); return; }
+
+        const result = await uploadChatFile(file, activeCanalId);
+        if (!result.success) { alert('Erro ao enviar arquivo: ' + result.error); return; }
+
+        const tipo = file.type.startsWith('image/') ? 'imagem' : 'arquivo';
+        await sendMensagem({
+            canal_id: activeCanalId,
+            autor_id: userId,
+            conteudo: tipo === 'imagem' ? undefined : file.name,
+            tipo,
+            arquivo_url: result.url,
+            arquivo_nome: result.nome,
+            arquivo_tamanho: result.tamanho,
+        });
+        e.target.value = '';
+    };
+
+    // Delete message
+    const handleDeleteMsg = async (msgId: string) => {
+        await deleteMensagem(msgId);
+    };
+
+    // Create channel
+    const handleCreateCanal = async () => {
+        if (!formNome.trim() || !userId) return;
+        setSaving(true);
+        const result = await createCanal({
+            nome: formNome.trim(),
+            descricao: formDescricao.trim() || undefined,
+            tipo: formTipo,
+            criador_id: userId,
+            participante_ids: formParticipantes,
+        });
+        if (result.success && result.canal) {
+            await refetchCanais();
+            setActiveCanalId(result.canal.id);
+        }
+        setSaving(false);
+        setModal(null);
+    };
+
+    // Edit channel
+    const handleEditCanal = async () => {
+        if (!activeCanalId || !formNome.trim()) return;
+        setSaving(true);
+        await updateCanal(activeCanalId, { nome: formNome.trim(), descricao: formDescricao.trim() });
+        await refetchCanais();
+        setSaving(false);
+        setModal(null);
+    };
+
+    // Delete channel
+    const handleDeleteCanal = async () => {
+        if (!activeCanalId) return;
+        setSaving(true);
+        await deleteCanal(activeCanalId);
+        setActiveCanalId(null);
+        await refetchCanais();
+        setSaving(false);
+        setModal(null);
+    };
+
+    // Add/remove participant
+    const handleToggleParticipante = async (uid: string) => {
+        if (!activeCanalId) return;
+        const isParticipant = participantes.some(p => p.usuario_id === uid);
+        if (isParticipant) await removeParticipante(activeCanalId, uid);
+        else await addParticipante(activeCanalId, uid);
+        await refetchParticipantes();
+    };
+
+    // Open modals
+    const openCreateModal = () => {
+        setFormNome(''); setFormDescricao(''); setFormTipo('canal'); setFormParticipantes([]);
+        setModal('create');
+    };
+    const openEditModal = () => {
+        if (!activeCanal) return;
+        setFormNome(activeCanal.nome); setFormDescricao(activeCanal.descricao || '');
+        setModal('edit');
+    };
+
+    // Render mention text with highlighted mentions
+    const renderMsgText = (text: string) => {
+        const parts = text.split(/(@\S+)/g);
+        return parts.map((part, i) =>
+            part.startsWith('@')
+                ? <span key={i} className="chat-mention">{part}</span>
+                : <span key={i}>{part}</span>
+        );
+    };
+
+    // Group messages + date separators
+    const renderMessages = () => {
+        const elements: React.ReactNode[] = [];
+        let lastDate = '';
+        let lastAuthorId = '';
+
+        mensagens.forEach((msg, idx) => {
+            const msgDate = new Date(msg.created_at).toDateString();
+            if (msgDate !== lastDate) {
+                lastDate = msgDate;
+                lastAuthorId = '';
+                elements.push(
+                    <div key={`date-${msgDate}`} className="chat-date-separator">
+                        <span>{formatDateSeparator(msg.created_at)}</span>
+                    </div>
+                );
+            }
+
+            const isGrouped = msg.autor_id === lastAuthorId && idx > 0
+                && (new Date(msg.created_at).getTime() - new Date(mensagens[idx - 1].created_at).getTime()) < 300000;
+            lastAuthorId = msg.autor_id || '';
+
+            const authorName = msg.autor?.nome || 'Usuário';
+            const authorColor = getColor(authorName);
+
+            elements.push(
+                <div key={msg.id} className={`chat-message ${isGrouped ? 'grouped' : ''} ${msg.deletada ? 'deleted' : ''}`} id={`msg-${msg.id}`}>
+                    {!isGrouped && !msg.deletada && (
+                        <div className="chat-message-avatar" style={{ background: authorColor }}>
+                            {getInitials(authorName)}
+                        </div>
+                    )}
+                    {isGrouped && <div className="chat-message-avatar-spacer" />}
+                    <div className="chat-message-content">
+                        {!isGrouped && !msg.deletada && (
+                            <div className="chat-message-header">
+                                <span className="chat-message-name">{authorName}</span>
+                                <span className="chat-message-time">{formatTime(msg.created_at)}</span>
+                            </div>
+                        )}
+                        {isGrouped && (
+                            <span className="chat-message-time-hover">{formatTime(msg.created_at)}</span>
+                        )}
+
+                        {/* Reply quote */}
+                        {msg.mensagem_original && !msg.deletada && (
+                            <div className="chat-reply-quote">
+                                <span className="chat-reply-author">{msg.mensagem_original.autor?.nome || 'Usuário'}</span>
+                                <span className="chat-reply-text">{msg.mensagem_original.conteudo?.slice(0, 80) || '...'}</span>
+                            </div>
+                        )}
+
+                        {msg.deletada ? (
+                            <div className="chat-message-text deleted-text">🚫 Mensagem apagada</div>
+                        ) : msg.tipo === 'imagem' && msg.arquivo_url ? (
+                            <div className="chat-message-image">
+                                <img src={msg.arquivo_url} alt="Imagem" loading="lazy" onClick={() => window.open(msg.arquivo_url!, '_blank')} />
+                            </div>
+                        ) : msg.tipo === 'arquivo' && msg.arquivo_url ? (
+                            <div className="chat-file-card">
+                                <FileText size={20} />
+                                <div className="chat-file-info">
+                                    <span className="chat-file-name">{msg.arquivo_nome || 'Arquivo'}</span>
+                                    <span className="chat-file-size">{msg.arquivo_tamanho ? formatFileSize(msg.arquivo_tamanho) : ''}</span>
+                                </div>
+                                <a href={msg.arquivo_url} target="_blank" rel="noopener noreferrer" className="chat-file-download">
+                                    <Download size={16} />
+                                </a>
+                            </div>
+                        ) : (
+                            <div className="chat-message-text">{renderMsgText(msg.conteudo || '')}</div>
+                        )}
+
+                        {/* Actions */}
+                        {!msg.deletada && (
+                            <div className="chat-message-actions">
+                                <button onClick={() => setReplyTo(msg)} title="Responder"><Reply size={14} /></button>
+                                {msg.autor_id === userId && (
+                                    <button onClick={() => handleDeleteMsg(msg.id)} title="Apagar"><Trash2 size={14} /></button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        });
+
+        return elements;
+    };
+
+    if (loadingCanais) {
         return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--text-muted)' }}>Carregando...</div>;
     }
 
-    const currentChannel = channels.find(c => c.id === activeChannelId) || channels[0];
+    const canaisCanal = canais.filter(c => c.tipo === 'canal');
+    const canaisGrupo = canais.filter(c => c.tipo === 'grupo_projeto');
 
     return (
         <div className="chat-layout">
@@ -32,135 +452,328 @@ export default function ChatPage() {
             <div className="chat-channels">
                 <div className="chat-channels-header">
                     <span>Canais</span>
-                    <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Plus size={16} /></button>
+                    <button onClick={openCreateModal} className="chat-icon-btn" title="Novo Canal"><Plus size={16} /></button>
                 </div>
-                <div className="channel-section-title">Canais</div>
-                {channels.map(channel => (
-                    <div
-                        key={channel.id}
-                        className={`channel-item ${activeChannelId === channel.id ? 'active' : ''}`}
-                        onClick={() => setActiveChannelId(channel.id)}
-                    >
-                        <Hash size={16} className="hash" />
-                        {channel.name}
-                        {channel.unread > 0 && <span className="unread">{channel.unread}</span>}
-                    </div>
-                ))}
-                <div className="channel-section-title" style={{ marginTop: 8 }}>Mensagens Diretas</div>
-                {team.slice(1, 4).map(member => (
-                    <div key={member.id} className="channel-item">
-                        <div style={{
-                            width: 18, height: 18, borderRadius: '50%', background: member.avatar_color,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 8, fontWeight: 700, color: 'white', position: 'relative'
-                        }}>
-                            {member.initials}
-                            <span style={{
-                                position: 'absolute', bottom: -1, right: -1, width: 6, height: 6,
-                                borderRadius: '50%', border: '1.5px solid var(--bg-secondary)',
-                                background: member.status === 'online' ? 'var(--success)' : member.status === 'away' ? 'var(--warning)' : 'var(--text-muted)',
-                            }} />
-                        </div>
-                        {member.name.split(' ')[0]}
-                    </div>
-                ))}
+
+                {canaisCanal.length > 0 && (
+                    <>
+                        <div className="channel-section-title"><Hash size={12} /> Canais de Texto</div>
+                        {canaisCanal.map(canal => (
+                            <div key={canal.id} className={`channel-item ${activeCanalId === canal.id ? 'active' : ''}`} onClick={() => setActiveCanalId(canal.id)}>
+                                <Hash size={14} className="hash" />
+                                <span className="channel-name">{canal.nome}</span>
+                            </div>
+                        ))}
+                    </>
+                )}
+
+                {canaisGrupo.length > 0 && (
+                    <>
+                        <div className="channel-section-title" style={{ marginTop: 12 }}><FolderKanban size={12} /> Grupos de Projeto</div>
+                        {canaisGrupo.map(canal => (
+                            <div key={canal.id} className={`channel-item ${activeCanalId === canal.id ? 'active' : ''}`} onClick={() => setActiveCanalId(canal.id)}>
+                                <FolderKanban size={14} className="hash" />
+                                <span className="channel-name">{canal.nome}</span>
+                            </div>
+                        ))}
+                    </>
+                )}
             </div>
 
             {/* Chat main area */}
             <div className="chat-main">
-                <div className="chat-header">
-                    <Hash size={18} style={{ color: 'var(--text-muted)' }} />
-                    <div>
-                        <div className="chat-header-name">{currentChannel?.name}</div>
-                        <div className="chat-header-desc">{currentChannel?.description}</div>
-                    </div>
-                </div>
-
-                <div className="chat-messages">
-                    {loadingMessages ? (
-                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>Carregando mensagens...</div>
-                    ) : (
-                        channelMessages.map(msg => (
-                            <div key={msg.id} className="chat-message">
-                                <div className="chat-message-avatar" style={{ background: msg.avatar_color }}>
-                                    {msg.author.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                                </div>
-                                <div className="chat-message-content">
-                                    <div className="chat-message-header">
-                                        <span className="chat-message-name">{msg.author}</span>
-                                        <span className="chat-message-time">{msg.time}</span>
-                                    </div>
-                                    <div className="chat-message-text">{msg.text}</div>
+                {activeCanal ? (
+                    <>
+                        <div className="chat-header">
+                            {activeCanal.tipo === 'canal' ? <Hash size={18} style={{ color: 'var(--text-muted)' }} /> : <FolderKanban size={18} style={{ color: 'var(--text-muted)' }} />}
+                            <div style={{ flex: 1 }}>
+                                <div className="chat-header-name">{activeCanal.nome}</div>
+                                <div className="chat-header-desc">
+                                    {activeCanal.descricao || ''}
+                                    {participantes.length > 0 && (
+                                        <span style={{ marginLeft: 8 }}>
+                                            · <span style={{ color: onlineMembersCount > 0 ? 'var(--success)' : 'var(--text-muted)' }}>●</span> {onlineMembersCount} online
+                                        </span>
+                                    )}
                                 </div>
                             </div>
-                        ))
-                    )}
-                </div>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                                <button className="chat-icon-btn" onClick={() => setModal('participants')} title="Membros"><Users size={16} /></button>
+                                {(activeCanal.criador_id === userId || user?.categoria === 'Admin Geral') && (
+                                    <>
+                                        <button className="chat-icon-btn" onClick={openEditModal} title="Editar Canal"><Settings size={16} /></button>
+                                        <button className="chat-icon-btn" onClick={() => setModal('deleteConfirm')} title="Excluir Canal"><Trash2 size={16} /></button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
 
-                <div className="chat-input-container">
-                    <div className="chat-input">
-                        <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}>
-                            <Paperclip size={18} />
-                        </button>
-                        <input
-                            type="text"
-                            placeholder={`Mensagem em #${currentChannel?.name}...`}
-                            value={messageText}
-                            onChange={e => setMessageText(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') setMessageText(''); }}
-                        />
-                        <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}>
-                            <Smile size={18} />
-                        </button>
-                        <button onClick={() => setMessageText('')}>
-                            <Send size={16} />
-                        </button>
+                        <div className="chat-messages">
+                            {loadingMensagens ? (
+                                <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>Carregando mensagens...</div>
+                            ) : mensagens.length === 0 ? (
+                                <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontSize: 13 }}>
+                                    Nenhuma mensagem ainda. Comece a conversa! 💬
+                                </div>
+                            ) : (
+                                renderMessages()
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Reply bar */}
+                        {replyTo && (
+                            <div className="chat-reply-bar">
+                                <Reply size={14} />
+                                <span>Respondendo a <strong>{replyTo.autor?.nome || 'Usuário'}</strong>: {replyTo.conteudo?.slice(0, 60)}...</span>
+                                <button onClick={() => setReplyTo(null)} className="chat-icon-btn"><X size={14} /></button>
+                            </div>
+                        )}
+
+                        {/* Mention dropdown */}
+                        {mentionQuery !== null && mentionMembers.length > 0 && (
+                            <div className="chat-mention-dropdown">
+                                {mentionMembers.map((p, i) => (
+                                    <div
+                                        key={p.usuario_id}
+                                        className={`chat-mention-item ${i === mentionIdx ? 'active' : ''}`}
+                                        onClick={() => insertMention(p.usuario?.nome || '')}
+                                    >
+                                        <div className="chat-mention-avatar" style={{ background: getColor(p.usuario?.nome || '') }}>
+                                            {getInitials(p.usuario?.nome || '')}
+                                        </div>
+                                        {p.usuario?.nome}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="chat-input-container">
+                            <div className="chat-input">
+                                <button onClick={() => fileInputRef.current?.click()} className="chat-icon-btn" title="Anexar arquivo">
+                                    <Paperclip size={18} />
+                                </button>
+                                <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt" />
+                                <textarea
+                                    ref={inputRef}
+                                    placeholder={`Mensagem em #${activeCanal.nome}...`}
+                                    value={messageText}
+                                    onChange={handleInputChange}
+                                    onKeyDown={handleKeyDown}
+                                    rows={1}
+                                />
+                                <button onClick={handleSend} disabled={!messageText.trim()} title="Enviar">
+                                    <Send size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+                        Selecione um canal ou crie um novo
                     </div>
-                </div>
+                )}
             </div>
 
-            {/* Members sidebar */}
-            <div className="chat-members">
-                <div className="chat-members-title">Online — {team.filter(t => t.status === 'online').length}</div>
-                {team.filter(t => t.status === 'online').map(member => (
-                    <div key={member.id} className="member-item">
-                        <div className="member-avatar" style={{ background: member.avatar_color }}>
-                            {member.initials}
-                            <span className={`member-status ${member.status}`} />
+            {/* ========== MODALS ========== */}
+
+            {/* Create Channel Modal */}
+            {modal === 'create' && (
+                <div className="modal-overlay" onClick={() => { setModal(null); setShowParticipantDropdown(false); }}>
+                    <div
+                        className="modal-content"
+                        onClick={e => { e.stopPropagation(); setShowParticipantDropdown(false); }}
+                        style={{ maxWidth: 480, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}
+                    >
+                        <div className="modal-header">
+                            <h3>Novo Canal</h3>
+                            <button onClick={() => setModal(null)} className="chat-icon-btn"><X size={18} /></button>
                         </div>
-                        <div>
-                            <div className="member-name">{member.name}</div>
-                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{member.role}</div>
+                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1 }}>
+                            <div>
+                                <label className="form-label">Nome do Canal</label>
+                                <input className="form-input" value={formNome} onChange={e => setFormNome(e.target.value)} placeholder="ex: comercial" />
+                            </div>
+                            <div>
+                                <label className="form-label">Descrição</label>
+                                <input className="form-input" value={formDescricao} onChange={e => setFormDescricao(e.target.value)} placeholder="Opcional" />
+                            </div>
+                            <div>
+                                <label className="form-label">Tipo</label>
+                                <select className="form-input" value={formTipo} onChange={e => { setFormTipo(e.target.value as 'canal' | 'grupo_projeto'); setShowParticipantDropdown(false); }}>
+                                    <option value="canal">Canal de Texto</option>
+                                    <option value="grupo_projeto">Grupo de Projeto</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="form-label">Participantes</label>
+                                {/* Tag box + inline dropdown — no floating */}
+                                <div
+                                    style={{ border: '1px solid var(--border-default)', borderRadius: 8, overflow: 'hidden', background: 'var(--bg-primary)' }}
+                                    onClick={e => e.stopPropagation()}
+                                >
+                                    {/* Tag + placeholder row */}
+                                    <div
+                                        style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 12px', cursor: 'pointer', minHeight: 46, alignItems: 'center' }}
+                                        onClick={() => setShowParticipantDropdown(v => !v)}
+                                    >
+                                        {formParticipantes.map(uid => {
+                                            const u = allUsuarios.find(x => x.id === uid);
+                                            if (!u) return null;
+                                            return (
+                                                <span key={uid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: 20, padding: '3px 10px 3px 6px', fontSize: 12 }}>
+                                                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: getColor(u.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                                                        {getInitials(u.nome)}
+                                                    </div>
+                                                    {u.nome}
+                                                    <span
+                                                        onClick={e => { e.stopPropagation(); setFormParticipantes(prev => prev.filter(x => x !== uid)); }}
+                                                        style={{ cursor: 'pointer', opacity: 0.6, fontSize: 16, lineHeight: 1, fontWeight: 700, marginLeft: 2 }}
+                                                    >×</span>
+                                                </span>
+                                            );
+                                        })}
+                                        <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                                            {formParticipantes.length === 0 ? 'Selecione os participantes...' : 'Adicionar mais...'}
+                                        </span>
+                                    </div>
+                                    {/* Inline dropdown list — NOT absolute positioned */}
+                                    {showParticipantDropdown && (
+                                        <div style={{ borderTop: '1px solid var(--border-default)', maxHeight: 200, overflowY: 'auto' }}>
+                                            {allUsuarios.filter(u => u.id !== userId && !formParticipantes.includes(u.id)).length === 0 ? (
+                                                <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>Todos já foram adicionados</div>
+                                            ) : (
+                                                allUsuarios.filter(u => u.id !== userId && !formParticipantes.includes(u.id)).map(u => (
+                                                    <div
+                                                        key={u.id}
+                                                        onClick={() => setFormParticipantes(prev => [...prev, u.id])}
+                                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', fontSize: 13 }}
+                                                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-muted)')}
+                                                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                    >
+                                                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: getColor(u.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                                                            {getInitials(u.nome)}
+                                                        </div>
+                                                        {u.nome}
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-primary" onClick={handleCreateCanal} disabled={saving || !formNome.trim()}>
+                                {saving ? 'Criando...' : 'Criar'}
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
                         </div>
                     </div>
-                ))}
-                <div className="chat-members-title" style={{ marginTop: 20 }}>Ausente — {team.filter(t => t.status === 'away').length}</div>
-                {team.filter(t => t.status === 'away').map(member => (
-                    <div key={member.id} className="member-item">
-                        <div className="member-avatar" style={{ background: member.avatar_color }}>
-                            {member.initials}
-                            <span className={`member-status ${member.status}`} />
+                </div>
+            )}
+
+
+
+            {/* Edit Channel Modal */}
+            {modal === 'edit' && activeCanal && (
+                <div className="modal-overlay" onClick={() => setModal(null)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header">
+                            <h3>Editar Canal</h3>
+                            <button onClick={() => setModal(null)} className="chat-icon-btn"><X size={18} /></button>
                         </div>
-                        <div>
-                            <div className="member-name">{member.name}</div>
-                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{member.role}</div>
+                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div>
+                                <label className="form-label">Nome</label>
+                                <input className="form-input" value={formNome} onChange={e => setFormNome(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="form-label">Descrição</label>
+                                <input className="form-input" value={formDescricao} onChange={e => setFormDescricao(e.target.value)} />
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
+                            <button className="btn btn-primary" onClick={handleEditCanal} disabled={saving}>
+                                {saving ? 'Salvando...' : 'Salvar'}
+                            </button>
                         </div>
                     </div>
-                ))}
-                <div className="chat-members-title" style={{ marginTop: 20 }}>Offline — {team.filter(t => t.status === 'offline').length}</div>
-                {team.filter(t => t.status === 'offline').map(member => (
-                    <div key={member.id} className="member-item">
-                        <div className="member-avatar" style={{ background: member.avatar_color }}>
-                            {member.initials}
-                            <span className={`member-status ${member.status}`} />
+                </div>
+            )}
+
+            {/* Manage Participants Modal */}
+            {modal === 'participants' && (
+                <div className="modal-overlay" onClick={() => setModal(null)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="modal-header">
+                            <h3>Membros do Canal</h3>
+                            <button onClick={() => setModal(null)} className="chat-icon-btn"><X size={18} /></button>
                         </div>
-                        <div>
-                            <div className="member-name">{member.name}</div>
-                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{member.role}</div>
+                        <div className="modal-body" style={{ maxHeight: 400, overflow: 'auto' }}>
+                            {allUsuarios.map(u => {
+                                const isParticipant = participantes.some(p => p.usuario_id === u.id);
+                                const isOnline = onlineUserIds.has(u.id);
+                                return (
+                                    <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                                        <div style={{ position: 'relative' }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: getColor(u.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff' }}>
+                                                {getInitials(u.nome)}
+                                            </div>
+                                            <span style={{ position: 'absolute', bottom: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: isOnline ? 'var(--success)' : '#555', border: '2px solid var(--bg-secondary)' }} />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: 13, fontWeight: 500 }}>{u.nome}</div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{u.email}</div>
+                                        </div>
+                                        {(activeCanal?.criador_id === userId || user?.categoria === 'Admin Geral') && (
+                                            <button
+                                                className={`btn ${isParticipant ? 'btn-secondary' : 'btn-primary'}`}
+                                                style={{ fontSize: 11, padding: '4px 10px' }}
+                                                onClick={() => handleToggleParticipante(u.id)}
+                                            >
+                                                {isParticipant ? 'Remover' : 'Adicionar'}
+                                            </button>
+                                        )}
+                                        {!(activeCanal?.criador_id === userId || user?.categoria === 'Admin Geral') && (
+                                            <span style={{ fontSize: 11, color: isParticipant ? 'var(--success)' : 'var(--text-muted)' }}>
+                                                {isParticipant ? 'Membro' : '—'}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setModal(null)}>Fechar</button>
                         </div>
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {modal === 'deleteConfirm' && (
+                <div className="modal-overlay" onClick={() => setModal(null)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+                        <div className="modal-header">
+                            <h3>Excluir Canal</h3>
+                            <button onClick={() => setModal(null)} className="chat-icon-btn"><X size={18} /></button>
+                        </div>
+                        <div className="modal-body">
+                            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                                Excluir este canal apagará <strong>todas as mensagens permanentemente</strong>. Esta ação não pode ser desfeita.
+                            </p>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
+                            <button className="btn" style={{ background: '#EF4444', color: '#fff' }} onClick={handleDeleteCanal} disabled={saving}>
+                                {saving ? 'Excluindo...' : 'Excluir Canal'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -20,6 +20,7 @@ import {
   AtSign,
   BellOff,
   LogOut,
+  FileCode2,
 } from 'lucide-react';
 import type { Notification } from '@/lib/types';
 
@@ -38,6 +39,7 @@ const allNavItems: NavItem[] = [
   { href: '/administrativo', label: 'Administrativo', icon: Briefcase },
   { href: '/calendario', label: 'Calendário', icon: CalendarDays },
   { href: '/chat', label: 'Chat', icon: MessageSquare },
+  { href: '/templates', label: 'Templates', icon: FileCode2 },
 ];
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
@@ -48,6 +50,7 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
   '/administrativo': { title: 'Administrativo', subtitle: 'Gestão organizacional' },
   '/calendario': { title: 'Calendário', subtitle: 'Eventos e reuniões da equipe' },
   '/chat': { title: 'Chat da Equipe', subtitle: 'Comunicação interna' },
+  '/templates': { title: 'Templates', subtitle: 'Modelos e ferramentas' },
   '/configuracoes': { title: 'Configurações', subtitle: 'Gerencie sua equipe e permissões' },
   '/notificacoes': { title: 'Notificações', subtitle: 'Histórico completo de notificações' },
 };

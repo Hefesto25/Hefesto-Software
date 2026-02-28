@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import type {
     TeamMember, Contact, Deal, Task,
-    Channel, ChatMessage, FinancialData,
+    Canal, CanalParticipante, Mensagem, FinancialData,
     ExpenseCategory, FinancialGoal,
     FinancialType, FinancialCategory, BudgetPlan,
     FinancialTransaction, SellerGoal, OperationalTask,
@@ -12,7 +12,8 @@ import type {
     AdminDemand, AdminMeeting,
     Contract, LegalDocument, LegalPendency,
     CalendarEvent,
-    Notification, NotificationSettings
+    Notification, NotificationSettings,
+    TemplateCategoria, TemplateModelo, TemplateSite
 } from './types';
 
 // Generic hook for fetching data from a table
@@ -71,31 +72,56 @@ export function useUsuarios() {
 
 const SUPABASE_URL = 'https://hlqftzvwilbwchfqelqy.supabase.co';
 
-export async function createUsuarioViaEdge(payload: {
+/**
+ * Creates a new user via supabase.auth.signUp().
+ * The trigger `on_auth_user_created` automatically creates the profile in `usuarios`.
+ * Only requires nome, email, and password — other fields are edited later.
+ */
+export async function createUsuarioViaSignUp(payload: {
     email: string;
     password: string;
     nome: string;
-    cargo?: string;
-    categoria: string;
-    modulos_acesso: string[];
-}): Promise<{ success: boolean; user?: UsuarioDB; error?: string }> {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return { success: false, error: 'Sessão expirada. Faça login novamente.' };
-
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-user`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
+}): Promise<{ success: boolean; error?: string }> {
+    const { data, error } = await supabase.auth.signUp({
+        email: payload.email,
+        password: payload.password,
+        options: {
+            data: {
+                nome: payload.nome,
+            },
         },
-        body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
-    if (!res.ok || data.error) {
-        return { success: false, error: data.error || 'Erro desconhecido ao criar usuário.' };
+    if (error) {
+        return { success: false, error: error.message };
     }
-    return { success: true, user: data.user };
+
+    if (!data.user) {
+        return { success: false, error: 'Erro desconhecido ao criar usuário.' };
+    }
+
+    return { success: true };
+}
+
+/**
+ * Updates a user profile in the `usuarios` table.
+ * Admin can update any field; regular users can only update nome and foto_url (enforced by RLS).
+ */
+export async function updateUsuario(
+    id: string,
+    updates: Partial<Omit<UsuarioDB, 'id' | 'email' | 'created_at'>>
+): Promise<{ success: boolean; user?: UsuarioDB; error?: string }> {
+    const { data, error } = await supabase
+        .from('usuarios')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        return { success: false, error: error.message };
+    }
+    return { success: true, user: data as UsuarioDB };
 }
 
 export async function deleteUsuarioViaEdge(userId: string): Promise<{ success: boolean; error?: string }> {
@@ -211,44 +237,176 @@ export function useTasks() {
 }
 
 // Chat
-export function useChannels() {
-    return useSupabaseTable<Channel>('channels', { column: 'created_at', ascending: true });
-}
+// =========== CHAT MODULE ===========
 
-export function useMessages(channelId: string | null) {
-    const [data, setData] = useState<ChatMessage[]>([]);
+export function useCanais(userId: string | undefined) {
+    const [data, setData] = useState<Canal[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
-    const fetchMessages = async () => {
-        if (!channelId) {
-            setData([]);
-            setLoading(false);
-            return;
-        }
-
+    const fetchCanais = async () => {
+        if (!userId) { setData([]); setLoading(false); return; }
         setLoading(true);
-        const { data: result, error: err } = await supabase
-            .from('chat_messages')
+        const { data: result, error } = await supabase
+            .from('canais')
             .select('*')
-            .eq('channel_id', channelId)
             .order('created_at', { ascending: true });
-
-        if (err) {
-            setError(err.message);
-            console.error('Error fetching messages:', err);
-        } else {
-            setData((result as ChatMessage[]) ?? []);
-        }
+        if (error) console.error('Error fetching canais:', error);
+        else setData((result as Canal[]) ?? []);
         setLoading(false);
     };
 
-    useEffect(() => {
-        fetchMessages();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [channelId]);
+    useEffect(() => { fetchCanais(); }, [userId]);
+    return { data, loading, setData, refetch: fetchCanais };
+}
 
-    return { data, loading, error, setData, refetch: fetchMessages };
+export function useCanalParticipantes(canalId: string | null) {
+    const [data, setData] = useState<(CanalParticipante & { usuario?: { id: string; nome: string; email: string; foto_url: string | null } })[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetch = async () => {
+        if (!canalId) { setData([]); setLoading(false); return; }
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('canal_participantes')
+            .select('*, usuario:usuarios(id, nome, email, foto_url)')
+            .eq('canal_id', canalId);
+        if (error) console.error('Error fetching participantes:', error);
+        else setData(result ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetch(); }, [canalId]);
+    return { data, loading, setData, refetch: fetch };
+}
+
+export function useMensagens(canalId: string | null) {
+    const [data, setData] = useState<Mensagem[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchMensagens = async () => {
+        if (!canalId) { setData([]); setLoading(false); return; }
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('mensagens')
+            .select(`
+                *,
+                autor:usuarios!autor_id(id, nome, email, foto_url),
+                mensagem_original:mensagens!resposta_de(id, conteudo, autor:usuarios!autor_id(nome))
+            `)
+            .eq('canal_id', canalId)
+            .order('created_at', { ascending: true });
+        if (error) console.error('Error fetching mensagens:', error);
+        else setData((result as Mensagem[]) ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchMensagens(); }, [canalId]);
+    return { data, loading, setData, refetch: fetchMensagens };
+}
+
+// --- CRUD: Canais ---
+export async function createCanal(payload: { nome: string; descricao?: string; tipo: 'canal' | 'grupo_projeto'; criador_id: string; participante_ids: string[] }) {
+    const { data: canal, error } = await supabase
+        .from('canais')
+        .insert({ nome: payload.nome, descricao: payload.descricao || null, tipo: payload.tipo, criador_id: payload.criador_id })
+        .select()
+        .single();
+    if (error || !canal) return { success: false, error: error?.message || 'Erro ao criar canal' };
+
+    // Add participants (including creator)
+    const allIds = [...new Set([payload.criador_id, ...payload.participante_ids])];
+    const participantes = allIds.map(uid => ({ canal_id: canal.id, usuario_id: uid }));
+    const { error: pError } = await supabase.from('canal_participantes').insert(participantes);
+    if (pError) console.error('Error adding participantes:', pError);
+
+    return { success: true, canal: canal as Canal };
+}
+
+export async function updateCanal(id: string, updates: { nome?: string; descricao?: string }) {
+    const { error } = await supabase.from('canais').update(updates).eq('id', id);
+    return { success: !error, error: error?.message };
+}
+
+export async function deleteCanal(id: string) {
+    const { error } = await supabase.from('canais').delete().eq('id', id);
+    return { success: !error, error: error?.message };
+}
+
+// --- CRUD: Participantes ---
+export async function addParticipante(canalId: string, usuarioId: string) {
+    const { error } = await supabase.from('canal_participantes').insert({ canal_id: canalId, usuario_id: usuarioId });
+    return { success: !error, error: error?.message };
+}
+
+export async function removeParticipante(canalId: string, usuarioId: string) {
+    const { error } = await supabase.from('canal_participantes').delete().eq('canal_id', canalId).eq('usuario_id', usuarioId);
+    return { success: !error, error: error?.message };
+}
+
+// --- CRUD: Mensagens ---
+export async function sendMensagem(payload: {
+    canal_id: string;
+    autor_id: string;
+    conteudo?: string;
+    tipo?: 'texto' | 'imagem' | 'arquivo';
+    arquivo_url?: string;
+    arquivo_nome?: string;
+    arquivo_tamanho?: number;
+    resposta_de?: string;
+}) {
+    const { data, error } = await supabase
+        .from('mensagens')
+        .insert({
+            canal_id: payload.canal_id,
+            autor_id: payload.autor_id,
+            conteudo: payload.conteudo || null,
+            tipo: payload.tipo || 'texto',
+            arquivo_url: payload.arquivo_url || null,
+            arquivo_nome: payload.arquivo_nome || null,
+            arquivo_tamanho: payload.arquivo_tamanho || null,
+            resposta_de: payload.resposta_de || null,
+        })
+        .select(`*, autor:usuarios!autor_id(id, nome, email, foto_url)`)
+        .single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, mensagem: data as Mensagem };
+}
+
+export async function deleteMensagem(id: string) {
+    const { error } = await supabase
+        .from('mensagens')
+        .update({ deletada: true, conteudo: null, arquivo_url: null, arquivo_nome: null })
+        .eq('id', id);
+    return { success: !error, error: error?.message };
+}
+
+// --- Mention Notification ---
+export async function createMentionNotification(payload: {
+    mencionado_id: string;
+    autor_nome: string;
+    canal_nome: string;
+    canal_id: string;
+    mensagem_id: string;
+    trecho: string;
+}) {
+    const { error } = await supabase.from('notificacoes').insert({
+        usuario_id: payload.mencionado_id,
+        tipo: 'mencao_chat',
+        titulo: `${payload.autor_nome} mencionou você em #${payload.canal_nome}`,
+        mensagem: `"${payload.trecho.slice(0, 100)}"`,
+        redirecionamento: `/chat?canal=${payload.canal_id}&msg=${payload.mensagem_id}`,
+        modulo_origem: 'chat',
+    });
+    return { success: !error, error: error?.message };
+}
+
+// --- File upload ---
+export async function uploadChatFile(file: File, canalId: string) {
+    const filePath = `${canalId}/${Date.now()}_${file.name}`;
+    const { data, error } = await supabase.storage.from('chat-files').upload(filePath, file, { upsert: false });
+    if (error) return { success: false, error: error.message };
+    const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
+    return { success: true, url: urlData.publicUrl, nome: file.name, tamanho: file.size };
 }
 
 // Financial
@@ -683,4 +841,127 @@ export async function createNotificationIfEnabled(
         modulo_origem: moduloOrigem,
         criada_em: new Date().toISOString()
     });
+}
+
+// =========== TEMPLATES MODULE ===========
+
+const SUPABASE_STORAGE_URL = 'https://hlqftzvwilbwchfqelqy.supabase.co/storage/v1/object/public';
+
+export function useTemplateCategorias(tipo?: 'modelo' | 'site') {
+    const [data, setData] = useState<TemplateCategoria[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchCategorias = async () => {
+        setLoading(true);
+        let query = supabase.from('template_categorias').select('*').order('nome');
+        if (tipo) query = query.eq('tipo', tipo);
+        const { data: result, error } = await query;
+        if (error) console.error('Error fetching template_categorias:', error);
+        else setData((result as TemplateCategoria[]) ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchCategorias(); }, [tipo]);
+    return { data, loading, refetch: fetchCategorias };
+}
+
+export async function createTemplateCategoria(nome: string, tipo: 'modelo' | 'site') {
+    const { data, error } = await supabase.from('template_categorias').insert({ nome, tipo }).select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+}
+
+export async function updateTemplateCategoria(id: string, nome: string) {
+    const { error } = await supabase.from('template_categorias').update({ nome }).eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+export async function deleteTemplateCategoria(id: string) {
+    const { error } = await supabase.from('template_categorias').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+export function useTemplateModelos() {
+    const [data, setData] = useState<TemplateModelo[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchModelos = async () => {
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('template_modelos')
+            .select('*, categoria:template_categorias(id, nome, tipo), responsavel:usuarios!responsavel_id(id, nome, email, foto_url)')
+            .order('created_at', { ascending: false });
+        if (error) console.error('Error fetching template_modelos:', error);
+        else setData((result as TemplateModelo[]) ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchModelos(); }, []);
+    return { data, loading, refetch: fetchModelos };
+}
+
+export async function createTemplateModelo(payload: Omit<TemplateModelo, 'id' | 'created_at' | 'categoria' | 'responsavel'>) {
+    const { data, error } = await supabase.from('template_modelos').insert(payload).select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+}
+
+export async function updateTemplateModelo(id: string, updates: Partial<Omit<TemplateModelo, 'id' | 'created_at' | 'categoria' | 'responsavel'>>) {
+    const { error } = await supabase.from('template_modelos').update(updates).eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+export async function deleteTemplateModelo(id: string) {
+    const { error } = await supabase.from('template_modelos').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+export function useTemplateSites() {
+    const [data, setData] = useState<TemplateSite[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchSites = async () => {
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('template_sites')
+            .select('*, categoria:template_categorias(id, nome, tipo)')
+            .order('nome');
+        if (error) console.error('Error fetching template_sites:', error);
+        else setData((result as TemplateSite[]) ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchSites(); }, []);
+    return { data, loading, refetch: fetchSites };
+}
+
+export async function createTemplateSite(payload: Omit<TemplateSite, 'id' | 'created_at' | 'categoria'>) {
+    const { data, error } = await supabase.from('template_sites').insert(payload).select().single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+}
+
+export async function updateTemplateSite(id: string, updates: Partial<Omit<TemplateSite, 'id' | 'created_at' | 'categoria'>>) {
+    const { error } = await supabase.from('template_sites').update(updates).eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+export async function deleteTemplateSite(id: string) {
+    const { error } = await supabase.from('template_sites').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
+export async function uploadTemplateImage(file: File): Promise<{ url: string | null; error?: string }> {
+    const ext = file.name.split('.').pop();
+    const filePath = `modelos/${Date.now()}.${ext}`;
+    const { data, error } = await supabase.storage.from('template-images').upload(filePath, file, { upsert: false });
+    if (error) return { url: null, error: error.message };
+    const { data: urlData } = supabase.storage.from('template-images').getPublicUrl(data.path);
+    return { url: urlData.publicUrl };
 }
