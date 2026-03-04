@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useTeam, createNotificationIfEnabled } from '@/lib/hooks';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useUsuarios, createNotificationIfEnabled, useClients } from '@/lib/hooks';
 import { useAuth } from '../contexts/AuthContext';
-import { Activity, Clock, CheckCircle2, LayoutDashboard, List, PieChart, Plus, Search as SearchIcon, Eye } from 'lucide-react';
+import { Activity, Clock, CheckCircle2, LayoutDashboard, List, PieChart, Plus, Search as SearchIcon, Eye, Users, ChevronLeft } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell } from 'recharts';
 import type { OperationalTask } from '@/lib/types';
-import { getBahiaDate } from '@/lib/utils';
+import { getBahiaDate, getBahiaDateString, formatLocalSystemDate } from '@/lib/utils';
 
 const KANBAN_COLUMNS = [
     { id: 'A Fazer', label: 'A Fazer', icon: <Clock size={16} />, color: '#F59E0B' },
@@ -19,10 +19,13 @@ const DIFICULDADE_LABELS = ['', '⭐', '⭐⭐', '⭐⭐⭐', '⭐⭐⭐⭐', '�
 
 export default function OperacionalPage() {
     const { data: tasks, loading, setData: setTasksData } = useOperationalTasks();
-    const { data: teamMembers } = useTeam();
+    const { data: allUsuarios } = useUsuarios();
+    const { data: clients, loading: loadingClients } = useClients();
     const { user } = useAuth();
     const [draggedTask, setDraggedTask] = useState<OperationalTask | null>(null);
-    const [activeTab, setActiveTab] = useState<'painel' | 'kanban' | 'historico'>('painel');
+    const [activeTab, setActiveTab] = useState<'operacoes' | 'painel' | 'kanban' | 'historico'>('painel');
+    const [selectedOpsClient, setSelectedOpsClient] = useState<any>(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const [showNewTaskModal, setShowNewTaskModal] = useState(false);
     const [showEditTaskModal, setShowEditTaskModal] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -33,6 +36,58 @@ export default function OperacionalPage() {
         categoria_tarefa: 'Desenvolvimento', tipo: 'manual', cliente_nome: '',
         status: 'A Fazer', origem: 'manual'
     });
+    const [filterOpsClient, setFilterOpsClient] = useState('');
+    const [filterOpsMember, setFilterOpsMember] = useState('');
+    const [filterOpsStatus, setFilterOpsStatus] = useState('');
+    const [filterOpsDeadline, setFilterOpsDeadline] = useState(''); // verde, amarelo, vermelho
+
+    // Combobox state
+    const [showNewResponsavelList, setShowNewResponsavelList] = useState(false);
+    const [showEditResponsavelList, setShowEditResponsavelList] = useState(false);
+    const [showNewParticipantesList, setShowNewParticipantesList] = useState(false);
+    const [showEditParticipantesList, setShowEditParticipantesList] = useState(false);
+    const newRespRef = useRef<HTMLDivElement>(null);
+    const editRespRef = useRef<HTMLDivElement>(null);
+    const newPartRef = useRef<HTMLDivElement>(null);
+    const editPartRef = useRef<HTMLDivElement>(null);
+
+    // Click-outside handler
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (newRespRef.current && !newRespRef.current.contains(e.target as Node)) setShowNewResponsavelList(false);
+            if (editRespRef.current && !editRespRef.current.contains(e.target as Node)) setShowEditResponsavelList(false);
+            if (newPartRef.current && !newPartRef.current.contains(e.target as Node)) setShowNewParticipantesList(false);
+            if (editPartRef.current && !editPartRef.current.contains(e.target as Node)) setShowEditParticipantesList(false);
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Filter users for Operacional module: Operacional + Admin Geral
+    const filteredOpUsuarios = useMemo(() =>
+        allUsuarios.filter(u => u.categoria === 'Operacional' || u.categoria === 'Admin Geral'),
+        [allUsuarios]
+    );
+
+    // Backward-compatible teamMembers-like accessor (for filters etc.)
+    const teamMembers = useMemo(() => filteredOpUsuarios.map(u => ({ id: u.id, name: u.nome, nome: u.nome, cargo: u.cargo, categoria: u.categoria })), [filteredOpUsuarios]);
+
+    // Auto-open task if task_id is in URL (from Chat Mention)
+    useEffect(() => {
+        if (!loading && tasks.length > 0) {
+            const params = new URLSearchParams(window.location.search);
+            const taskId = params.get('task_id');
+            if (taskId) {
+                const task = tasks.find(t => t.id === taskId);
+                if (task) {
+                    setEditTaskForm(task);
+                    setShowEditTaskModal(true);
+                    // Clear the URL to prevent re-opening on manual refresh
+                    window.history.replaceState({}, '', '/operacional');
+                }
+            }
+        }
+    }, [loading, tasks]);
 
     if (loading) return <div className="p-8 text-center text-muted">Carregando tarefas...</div>;
 
@@ -171,6 +226,47 @@ export default function OperacionalPage() {
     }, {} as Record<string, number>);
     const periodData = Object.keys(periodCount).map(k => ({ name: k, amount: periodCount[k] })).sort((a, b) => a.name.localeCompare(b.name));
 
+    // --- OPERAÇÕES TAB DATA ---
+    const activeClients = clients ? clients.filter(c => c.status === 'Ativo') : [];
+
+    const activeClientsFiltered = searchTerm
+        ? activeClients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()))
+        : activeClients;
+
+    const visaoGeralTasks = (() => {
+        let filtered = kanbanTasks;
+        if (filterOpsClient) filtered = filtered.filter(t => t.cliente_nome === filterOpsClient);
+        if (filterOpsMember) filtered = filtered.filter(t => t.responsavel_id === filterOpsMember);
+        if (filterOpsStatus) filtered = filtered.filter(t => t.status === filterOpsStatus);
+        if (filterOpsDeadline) {
+            const today = getBahiaDateString();
+            filtered = filtered.filter(t => {
+                if (!t.data_termino) return false;
+                const diffDays = Math.ceil((new Date(t.data_termino).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+                if (filterOpsDeadline === 'vermelho') return diffDays < 0;
+                if (filterOpsDeadline === 'amarelo') return diffDays >= 0 && diffDays <= 3;
+                if (filterOpsDeadline === 'verde') return diffDays > 3;
+                return true;
+            });
+        }
+
+        const grouped: Record<string, OperationalTask[]> = {};
+        filtered.forEach(t => {
+            const cName = t.cliente_nome || 'Sem Cliente Vinculado';
+            if (!grouped[cName]) grouped[cName] = [];
+            grouped[cName].push(t);
+        });
+        return grouped;
+    })();
+
+    const getDeadlineIndicator = (dateString?: string) => {
+        if (!dateString) return null;
+        const diffDays = Math.ceil((new Date(dateString).getTime() - new Date(getBahiaDateString()).getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) return <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} title="Atrasado" />;
+        if (diffDays <= 3) return <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#F59E0B', display: 'inline-block' }} title="Vence em breve (≤3 dias)" />;
+        return <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} title="No prazo" />;
+    };
+
     return (
         <div style={{ paddingBottom: 60 }}>
 
@@ -180,13 +276,191 @@ export default function OperacionalPage() {
                 <button className={`finance-tab ${activeTab === 'painel' ? 'active' : ''}`} onClick={() => setActiveTab('painel')}>
                     Painel
                 </button>
+                <button className={`finance-tab ${activeTab === 'operacoes' ? 'active' : ''}`} onClick={() => setActiveTab('operacoes')}>
+                    Operações
+                </button>
                 <button className={`finance-tab ${activeTab === 'kanban' ? 'active' : ''}`} onClick={() => setActiveTab('kanban')}>
-                    Kanban
+                    Kanban Geral
                 </button>
                 <button className={`finance-tab ${activeTab === 'historico' ? 'active' : ''}`} onClick={() => setActiveTab('historico')}>
                     Histórico
                 </button>
             </div>
+
+            {/* TAB OPERAÇÕES */}
+            {activeTab === 'operacoes' && (
+                <div>
+                    {!selectedOpsClient ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+                            {/* Clients Section */}
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                    <h2 className="section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><Users size={20} /> Clientes Ativos ({activeClients.length})</h2>
+                                    <div className="header-search" style={{ width: 300 }}>
+                                        <SearchIcon size={16} />
+                                        <input type="text" placeholder="Buscar cliente..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                    </div>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                                    {activeClientsFiltered.map(client => {
+                                        const cTasks = kanbanTasks.filter(t => t.cliente_nome === client.name).length;
+                                        return (
+                                            <div key={client.id} className="stat-card" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', transition: 'all 0.2s', border: '1px solid rgba(255,255,255,0.05)' }} onClick={() => setSelectedOpsClient(client)} onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'}>
+                                                <div style={{ fontWeight: 600, fontSize: 15 }}>{client.name}</div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: cTasks > 0 ? '#3B82F6' : '#22c55e' }} />
+                                                    {cTasks} tarefas ativas
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {activeClientsFiltered.length === 0 && <div className="text-muted" style={{ gridColumn: '1 / -1', padding: '24px 0', textAlign: 'center' }}>Nenhum cliente ativo encontrado.</div>}
+                                </div>
+                            </div>
+
+                            <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)' }} />
+
+                            {/* General Tasks Overview Section */}
+                            <div>
+                                <h2 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}><LayoutDashboard size={20} /> Visão Geral de Tarefas</h2>
+
+                                <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+                                    <select className="form-select" style={{ maxWidth: 200 }} value={filterOpsClient} onChange={e => setFilterOpsClient(e.target.value)}>
+                                        <option value="">Todos os Clientes</option>
+                                        {activeClients.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                    </select>
+                                    <select className="form-select" style={{ maxWidth: 200 }} value={filterOpsMember} onChange={e => setFilterOpsMember(e.target.value)}>
+                                        <option value="">Todos os Membros</option>
+                                        {teamMembers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                                    </select>
+                                    <select className="form-select" style={{ maxWidth: 200 }} value={filterOpsStatus} onChange={e => setFilterOpsStatus(e.target.value)}>
+                                        <option value="">Qualquer Status</option>
+                                        {KANBAN_COLUMNS.filter(c => c.id !== 'Finalizado').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                                    </select>
+                                    <select className="form-select" style={{ maxWidth: 200 }} value={filterOpsDeadline} onChange={e => setFilterOpsDeadline(e.target.value)}>
+                                        <option value="">Qualquer Prazo</option>
+                                        <option value="vermelho">Atrasadas</option>
+                                        <option value="amarelo">Próximas (≤3 dias)</option>
+                                        <option value="verde">No Prazo (&gt;3 dias)</option>
+                                    </select>
+                                    {(filterOpsClient || filterOpsMember || filterOpsStatus || filterOpsDeadline) && (
+                                        <button className="btn" style={{ padding: '4px 12px', background: 'transparent', color: 'var(--danger)', fontSize: 13 }} onClick={() => { setFilterOpsClient(''); setFilterOpsMember(''); setFilterOpsStatus(''); setFilterOpsDeadline(''); }}>Limpar Filtros</button>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                                    {Object.keys(visaoGeralTasks).sort((a, b) => a.localeCompare(b)).map(clientName => (
+                                        <div key={clientName} className="table-card">
+                                            <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: 'var(--text-primary)' }}>{clientName} <span className="text-muted" style={{ fontSize: 13, fontWeight: 'normal' }}>({visaoGeralTasks[clientName].length} tarefas)</span></h3>
+                                            <table className="data-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Título</th>
+                                                        <th>Status</th>
+                                                        <th>Prazo Limite</th>
+                                                        <th>Responsável</th>
+                                                        <th style={{ width: 60, textAlign: 'center' }}>Prazo</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {visaoGeralTasks[clientName].map(task => {
+                                                        const col = KANBAN_COLUMNS.find(c => c.id === task.status);
+                                                        return (
+                                                            <tr key={task.id} style={{ cursor: 'pointer' }} onClick={() => { setEditTaskForm(task); setShowEditTaskModal(true); }}>
+                                                                <td style={{ fontWeight: 500 }}>{task.titulo}</td>
+                                                                <td><span style={{ color: col?.color, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{col?.icon} {task.status}</span></td>
+                                                                <td>{task.data_termino ? formatLocalSystemDate(task.data_termino) : '-'}</td>
+                                                                <td>{task.responsavel_id || '-'}</td>
+                                                                <td style={{ textAlign: 'center' }}>{getDeadlineIndicator(task.data_termino) || '-'}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ))}
+                                    {Object.keys(visaoGeralTasks).length === 0 && (
+                                        <div className="text-center text-muted" style={{ padding: '40px 0', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 12 }}>
+                                            Nenhuma tarefa encontrada com os filtros atuais.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                            {/* Per-Client Kanban Header */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                    <button className="btn btn-secondary" style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => setSelectedOpsClient(null)}>
+                                        <ChevronLeft size={16} /> Voltar
+                                    </button>
+                                    <h2 className="section-title" style={{ margin: 0 }}>Operações: {selectedOpsClient.name}</h2>
+                                </div>
+                                <button className="btn btn-primary" onClick={() => {
+                                    setNewTask({ ...newTask, cliente_nome: selectedOpsClient.name });
+                                    setShowNewTaskModal(true);
+                                }}>
+                                    <Plus size={14} /> Nova Tarefa
+                                </button>
+                            </div>
+
+                            {/* Per-Client Kanban Board */}
+                            <div style={{ display: 'flex', gap: 24, overflowX: 'auto', paddingBottom: 16 }}>
+                                {KANBAN_COLUMNS.filter(c => c.id !== 'Finalizado').map(col => {
+                                    const colTasks = kanbanTasks.filter(t => t.status === col.id && t.cliente_nome === selectedOpsClient.name);
+                                    return (
+                                        <div key={col.id} style={{ minWidth: 320, width: 320, display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--bg-secondary)', padding: 16, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', minHeight: '60vh' }}
+                                            onDragOver={onDragOver} onDrop={(e) => onDrop(e, col.id as OperationalTask['status'])}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: col.color, fontWeight: 600 }}>{col.icon} {col.label}</div>
+                                                <span style={{ fontSize: 12, background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: 12, color: 'var(--text-primary)' }}>{colTasks.length}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                                {colTasks.map(task => (
+                                                    <div key={task.id} draggable onDragStart={(e) => onDragStart(e, task)} onDragEnd={onDragEnd} onClick={() => { setEditTaskForm(task); setShowEditTaskModal(true); }}
+                                                        style={{ background: 'var(--bg-primary)', padding: 16, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', cursor: 'grab', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                            <strong style={{ fontSize: 14 }}>{task.titulo}</strong>
+                                                            <div style={{ display: 'flex', gap: 4 }}>
+                                                                {task.origem === 'comercial_automatico' && <span style={{ fontSize: 10, background: 'rgba(139,92,246,0.2)', color: '#8B5CF6', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>Comercial</span>}
+                                                                {task.categoria_tarefa && <span style={{ fontSize: 10, background: 'rgba(59,130,246,0.15)', color: '#3B82F6', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{task.categoria_tarefa}</span>}
+                                                            </div>
+                                                        </div>
+                                                        {task.descricao && <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{task.descricao.substring(0, 80)}{task.descricao.length > 80 ? '...' : ''}</div>}
+                                                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-muted)' }}>
+                                                            {task.responsavel_id && <span>👤 {task.responsavel_id}</span>}
+                                                            {task.dificuldade && <span>Dif: {task.dificuldade}/5</span>}
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <span>Prazo: {task.data_termino ? formatLocalSystemDate(task.data_termino) : '-'}</span>
+                                                                {getDeadlineIndicator(task.data_termino)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {colTasks.length === 0 && <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 8 }}>Mova uma tarefa para cá</div>}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Drop zone for Finalizado */}
+                                <div style={{ minWidth: 320, width: 320, display: 'flex', flexDirection: 'column', gap: 12, background: 'rgba(16,185,129,0.05)', padding: 16, borderRadius: 12, border: '2px dashed rgba(16,185,129,0.3)', minHeight: '60vh' }}
+                                    onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'Finalizado')}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#10B981', fontWeight: 600 }}><CheckCircle2 size={16} /> Finalizado</div>
+                                    </div>
+                                    <div style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+                                        Arraste tarefas aqui para finalizar.<br />Cards finalizados vão para o Histórico.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* TAB PAINEL */}
             {activeTab === 'painel' && (
@@ -282,9 +556,10 @@ export default function OperacionalPage() {
                                         {colTasks.map(task => (
                                             <div key={task.id} draggable onDragStart={(e) => onDragStart(e, task)} onDragEnd={onDragEnd} onClick={() => { setEditTaskForm(task); setShowEditTaskModal(true); }}
                                                 style={{ background: 'var(--bg-primary)', padding: 16, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', cursor: 'grab', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                    <strong style={{ fontSize: 14 }}>{task.titulo}</strong>
-                                                    <div style={{ display: 'flex', gap: 4 }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexDirection: 'column', gap: 4 }}>
+                                                    <strong style={{ fontSize: 14, color: 'var(--accent-light)' }}>{task.cliente_nome || '-'}</strong>
+                                                    <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{task.titulo}</div>
+                                                    <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                                                         {task.origem === 'comercial_automatico' && (
                                                             <span style={{ fontSize: 10, background: 'rgba(139,92,246,0.2)', color: '#8B5CF6', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>Comercial</span>
                                                         )}
@@ -298,9 +573,8 @@ export default function OperacionalPage() {
                                                     {task.responsavel_id && <span>👤 {task.responsavel_id}</span>}
                                                     {task.dificuldade && <span>Dif: {task.dificuldade}/5</span>}
                                                 </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
-                                                    <span>Cliente: <span style={{ color: 'var(--text-primary)' }}>{task.cliente_nome || '-'}</span></span>
-                                                    {task.data_termino && <span style={{ color: new Date(task.data_termino) < getBahiaDate() ? '#EF4444' : 'var(--text-muted)' }}>Prazo: {new Date(task.data_termino).toLocaleDateString('pt-br')}</span>}
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
+                                                    {task.data_termino && <span style={{ color: task.data_termino < getBahiaDateString() ? '#EF4444' : 'var(--text-muted)' }}>Prazo: {formatLocalSystemDate(task.data_termino)}</span>}
                                                 </div>
                                             </div>
                                         ))}
@@ -370,8 +644,8 @@ export default function OperacionalPage() {
                                     <td>{t.categoria_tarefa || '-'}</td>
                                     <td>{t.dificuldade ? `${t.dificuldade}/5` : '-'}</td>
                                     <td>{t.responsavel_id || '-'}</td>
-                                    <td>{t.data_inicio ? new Date(t.data_inicio).toLocaleDateString('pt-br') : '-'}</td>
-                                    <td>{t.data_conclusao ? new Date(t.data_conclusao).toLocaleDateString('pt-br') : '-'}</td>
+                                    <td>{t.data_inicio ? formatLocalSystemDate(t.data_inicio) : '-'}</td>
+                                    <td>{t.data_conclusao ? formatLocalSystemDate(t.data_conclusao) : '-'}</td>
                                 </tr>
                             ))}
                             {finishedTasks.length === 0 && (
@@ -402,14 +676,77 @@ export default function OperacionalPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div>
                                     <label className="form-label">Responsável</label>
-                                    <select className="form-select" value={newTask.responsavel_id || ''} onChange={e => setNewTask({ ...newTask, responsavel_id: e.target.value })}>
-                                        <option value="">Selecione...</option>
-                                        {teamMembers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                                    </select>
+                                    <div className="combobox-container" ref={newRespRef}>
+                                        <div className={`combobox-trigger ${showNewResponsavelList ? 'active' : ''}`} onClick={() => setShowNewResponsavelList(!showNewResponsavelList)}>
+                                            {newTask.responsavel_id ? (
+                                                <span className="combobox-chip">
+                                                    {filteredOpUsuarios.find(u => u.nome === newTask.responsavel_id)?.nome || newTask.responsavel_id}
+                                                    <span className="combobox-chip-remove" onClick={e => { e.stopPropagation(); setNewTask({ ...newTask, responsavel_id: '' }); }}>×</span>
+                                                </span>
+                                            ) : <span className="combobox-placeholder">Selecione...</span>}
+                                        </div>
+                                        {showNewResponsavelList && (
+                                            <div className="combobox-dropdown">
+                                                {filteredOpUsuarios.map(u => {
+                                                    const isSel = newTask.responsavel_id === u.nome;
+                                                    return (
+                                                        <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
+                                                            onClick={() => { setNewTask({ ...newTask, responsavel_id: u.nome }); setShowNewResponsavelList(false); }}>
+                                                            <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
+                                                            <div className="combobox-item-info">
+                                                                <div className="combobox-item-name">{u.nome}</div>
+                                                                <div className="combobox-item-role">{u.cargo || u.categoria}</div>
+                                                            </div>
+                                                            <span className="combobox-item-check">✓</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="form-label">Cliente</label>
                                     <input type="text" className="form-input" value={newTask.cliente_nome || ''} onChange={e => setNewTask({ ...newTask, cliente_nome: e.target.value })} placeholder="Nome do cliente" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="form-label">Participantes</label>
+                                <div className="combobox-container" ref={newPartRef}>
+                                    <div className={`combobox-trigger ${showNewParticipantesList ? 'active' : ''}`} onClick={() => setShowNewParticipantesList(!showNewParticipantesList)}>
+                                        {(newTask.participantes_ids || []).length > 0 ? (
+                                            (newTask.participantes_ids || []).map(uid => {
+                                                const u = filteredOpUsuarios.find(x => x.id === uid);
+                                                return (
+                                                    <span key={uid} className="combobox-chip">
+                                                        {u?.nome || uid}
+                                                        <span className="combobox-chip-remove" onClick={e => { e.stopPropagation(); setNewTask({ ...newTask, participantes_ids: (newTask.participantes_ids || []).filter(x => x !== uid) }); }}>×</span>
+                                                    </span>
+                                                );
+                                            })
+                                        ) : <span className="combobox-placeholder">Selecione participantes...</span>}
+                                    </div>
+                                    {showNewParticipantesList && (
+                                        <div className="combobox-dropdown">
+                                            {filteredOpUsuarios.map(u => {
+                                                const isSel = (newTask.participantes_ids || []).includes(u.id);
+                                                return (
+                                                    <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
+                                                        onClick={() => {
+                                                            const ids = newTask.participantes_ids || [];
+                                                            setNewTask({ ...newTask, participantes_ids: isSel ? ids.filter(x => x !== u.id) : [...ids, u.id] });
+                                                        }}>
+                                                        <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
+                                                        <div className="combobox-item-info">
+                                                            <div className="combobox-item-name">{u.nome}</div>
+                                                            <div className="combobox-item-role">{u.cargo || u.categoria}</div>
+                                                        </div>
+                                                        <span className="combobox-item-check">✓</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -433,11 +770,11 @@ export default function OperacionalPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div>
                                     <label className="form-label">Data de Início</label>
-                                    <input type="date" className="form-input" value={newTask.data_inicio || ''} onChange={e => setNewTask({ ...newTask, data_inicio: e.target.value })} />
+                                    <input type="date" className="form-input" value={newTask.data_inicio ? newTask.data_inicio.slice(0, 10) : ''} onChange={e => setNewTask({ ...newTask, data_inicio: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="form-label">Prazo Limite</label>
-                                    <input type="date" className="form-input" value={newTask.data_termino || ''} onChange={e => setNewTask({ ...newTask, data_termino: e.target.value })} />
+                                    <input type="date" className="form-input" value={newTask.data_termino ? newTask.data_termino.slice(0, 10) : ''} onChange={e => setNewTask({ ...newTask, data_termino: e.target.value })} />
                                 </div>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
@@ -469,14 +806,77 @@ export default function OperacionalPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div>
                                     <label className="form-label">Responsável</label>
-                                    <select className="form-select" value={editTaskForm.responsavel_id || ''} onChange={e => setEditTaskForm({ ...editTaskForm, responsavel_id: e.target.value })}>
-                                        <option value="">Selecione...</option>
-                                        {teamMembers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                                    </select>
+                                    <div className="combobox-container" ref={editRespRef}>
+                                        <div className={`combobox-trigger ${showEditResponsavelList ? 'active' : ''}`} onClick={() => setShowEditResponsavelList(!showEditResponsavelList)}>
+                                            {editTaskForm.responsavel_id ? (
+                                                <span className="combobox-chip">
+                                                    {filteredOpUsuarios.find(u => u.nome === editTaskForm.responsavel_id)?.nome || editTaskForm.responsavel_id}
+                                                    <span className="combobox-chip-remove" onClick={e => { e.stopPropagation(); setEditTaskForm({ ...editTaskForm, responsavel_id: '' }); }}>×</span>
+                                                </span>
+                                            ) : <span className="combobox-placeholder">Selecione...</span>}
+                                        </div>
+                                        {showEditResponsavelList && (
+                                            <div className="combobox-dropdown">
+                                                {filteredOpUsuarios.map(u => {
+                                                    const isSel = editTaskForm.responsavel_id === u.nome;
+                                                    return (
+                                                        <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
+                                                            onClick={() => { setEditTaskForm({ ...editTaskForm, responsavel_id: u.nome }); setShowEditResponsavelList(false); }}>
+                                                            <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
+                                                            <div className="combobox-item-info">
+                                                                <div className="combobox-item-name">{u.nome}</div>
+                                                                <div className="combobox-item-role">{u.cargo || u.categoria}</div>
+                                                            </div>
+                                                            <span className="combobox-item-check">✓</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="form-label">Cliente</label>
                                     <input type="text" className="form-input" value={editTaskForm.cliente_nome || ''} onChange={e => setEditTaskForm({ ...editTaskForm, cliente_nome: e.target.value })} placeholder="Nome do cliente" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="form-label">Participantes</label>
+                                <div className="combobox-container" ref={editPartRef}>
+                                    <div className={`combobox-trigger ${showEditParticipantesList ? 'active' : ''}`} onClick={() => setShowEditParticipantesList(!showEditParticipantesList)}>
+                                        {(editTaskForm.participantes_ids || []).length > 0 ? (
+                                            (editTaskForm.participantes_ids || []).map(uid => {
+                                                const u = filteredOpUsuarios.find(x => x.id === uid);
+                                                return (
+                                                    <span key={uid} className="combobox-chip">
+                                                        {u?.nome || uid}
+                                                        <span className="combobox-chip-remove" onClick={e => { e.stopPropagation(); setEditTaskForm({ ...editTaskForm, participantes_ids: (editTaskForm.participantes_ids || []).filter(x => x !== uid) }); }}>×</span>
+                                                    </span>
+                                                );
+                                            })
+                                        ) : <span className="combobox-placeholder">Selecione participantes...</span>}
+                                    </div>
+                                    {showEditParticipantesList && (
+                                        <div className="combobox-dropdown">
+                                            {filteredOpUsuarios.map(u => {
+                                                const isSel = (editTaskForm.participantes_ids || []).includes(u.id);
+                                                return (
+                                                    <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
+                                                        onClick={() => {
+                                                            const ids = editTaskForm.participantes_ids || [];
+                                                            setEditTaskForm({ ...editTaskForm, participantes_ids: isSel ? ids.filter(x => x !== u.id) : [...ids, u.id] });
+                                                        }}>
+                                                        <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
+                                                        <div className="combobox-item-info">
+                                                            <div className="combobox-item-name">{u.nome}</div>
+                                                            <div className="combobox-item-role">{u.cargo || u.categoria}</div>
+                                                        </div>
+                                                        <span className="combobox-item-check">✓</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -500,11 +900,11 @@ export default function OperacionalPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div>
                                     <label className="form-label">Data de Início</label>
-                                    <input type="date" className="form-input" value={editTaskForm.data_inicio || ''} onChange={e => setEditTaskForm({ ...editTaskForm, data_inicio: e.target.value })} />
+                                    <input type="date" className="form-input" value={editTaskForm.data_inicio ? editTaskForm.data_inicio.slice(0, 10) : ''} onChange={e => setEditTaskForm({ ...editTaskForm, data_inicio: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="form-label">Prazo Limite</label>
-                                    <input type="date" className="form-input" value={editTaskForm.data_termino || ''} onChange={e => setEditTaskForm({ ...editTaskForm, data_termino: e.target.value })} />
+                                    <input type="date" className="form-input" value={editTaskForm.data_termino ? editTaskForm.data_termino.slice(0, 10) : ''} onChange={e => setEditTaskForm({ ...editTaskForm, data_termino: e.target.value })} />
                                 </div>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>

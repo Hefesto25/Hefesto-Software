@@ -7,6 +7,7 @@ import {
 import type { CalendarEvent } from '@/lib/types';
 import { useTeam, useCalendarEvents, addCalendarEvent, updateCalendarEvent, removeCalendarEvent } from '@/lib/hooks';
 import { getBahiaDate, getBahiaDateString } from '@/lib/utils';
+import { useAuth } from '../contexts/AuthContext';
 
 const EVENT_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#14B8A6'];
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -15,7 +16,8 @@ const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Jul
 type ViewMode = 'month' | 'week' | 'day';
 
 export default function CalendarioPage() {
-    const { data: eventsData, refetch } = useCalendarEvents();
+    const { user } = useAuth();
+    const { data: eventsData, refetch } = useCalendarEvents(user?.id);
     const { data: teamMembers } = useTeam();
 
     const [currentDate, setCurrentDate] = useState(getBahiaDate());
@@ -121,7 +123,6 @@ export default function CalendarioPage() {
                             {teamMembers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                         </select>
                     </div>
-                    <button className="btn btn-secondary" style={{ opacity: 0.7, fontSize: 12 }} title="Em breve"><CalendarDays size={14} /> Google Agenda</button>
                     <button className="btn btn-primary" onClick={() => openNewEvent()}><Plus size={14} /> Novo Evento</button>
                 </div>
             </div>

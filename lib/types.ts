@@ -14,6 +14,17 @@ export interface TeamMember {
     created_at?: string;
 }
 
+export interface UsuarioDB {
+    id: string; // from auth.users
+    nome: string;
+    email: string;
+    foto_url: string | null;
+    created_at: string;
+    in_comercial_team?: boolean;
+    permissao_diretorio_clientes?: boolean;
+    permissao_diretorio_colaboradores?: 'nenhuma' | 'basico' | 'sensivel';
+}
+
 export interface Contact {
     id: string;
     name: string;
@@ -100,6 +111,7 @@ export interface Mensagem {
         conteudo: string | null;
         autor?: { nome: string };
     };
+    mencoes_tarefas?: any[];
 }
 
 export interface FinancialData {
@@ -137,13 +149,15 @@ export interface FinancialTransaction {
     created_at?: string;
 }
 
-export interface FinancialGoal {
+export interface FinancialTax {
     id: string;
-    name: string;
-    target: number;
-    current: number;
-    unit: string;
-    color: string;
+    descricao: string;
+    categoria: string;
+    competencia: string;
+    data_vencimento: string;
+    data_pagamento: string | null;
+    valor: number;
+    status: 'Pendente' | 'Pago' | 'Vencido' | string;
     created_at?: string;
 }
 
@@ -169,12 +183,12 @@ export interface BudgetPlan {
 
 
 
-export interface SellerGoal {
+export interface ComercialCommissionTier {
     id: string;
-    seller_name: string;
-    month: string;
-    year: string;
-    goal_value: number;
+    name: string;
+    min_value: number;
+    max_value: number | null;
+    percentage: number;
     created_at?: string;
 }
 
@@ -190,7 +204,9 @@ export interface OperationalTask {
     tipo: 'previa' | 'finalizar_ferramenta' | 'implementacao' | 'manual' | string;
     cliente_nome: string;
     negocio_id?: string;
-    responsavel_id?: string;
+    responsavel_id?: string; // legacy single
+    responsaveis_ids?: string[]; // new multi-assignee
+    participantes_ids?: string[]; // co-participants
     status: 'A Fazer' | 'Fazendo' | 'Revisando' | 'Finalizado' | 'pendente' | 'em_andamento' | 'concluido';
     origem: 'comercial_automatico' | 'manual' | string;
     data_criacao?: string;
@@ -199,6 +215,13 @@ export interface OperationalTask {
 }
 
 // CRM Entities
+export interface ActiveTaskMention {
+    id: string;
+    title: string;
+    module: 'Operacional' | 'Comercial' | 'Administrativo' | 'Financeiro';
+    status: string;
+}
+
 export interface ClientCRM {
     id: string;
     name: string;
@@ -217,6 +240,11 @@ export interface ClientCRM {
     features_used?: string;
     observations?: string;
     responsible_id?: string;
+    hosting_cost?: number;
+    db_cost?: number;
+    operational_hours?: number;
+    hour_value?: number;
+    cac?: number;
     created_at?: string;
 }
 
@@ -245,12 +273,12 @@ export interface FeedbackCRM {
     created_at?: string;
 }
 
-// Administrative Entities
 export interface AdminDemand {
     id: string;
     titulo: string;
     descricao?: string;
-    responsavel_id?: string;
+    responsavel_id?: string; // legacy single
+    responsaveis_ids?: string[]; // new multi-assignee
     data_prevista?: string;
     data_conclusao?: string;
     prioridade?: 'Alta' | 'Média' | 'Baixa';
@@ -261,11 +289,27 @@ export interface AdminDemand {
 export interface AdminMeeting {
     id: string;
     titulo: string;
-    participantes?: string;
+    participantes?: string; // legacy text
+    participantes_ids?: string[]; // new multi-assignee
     data_hora?: string;
     pauta?: string;
     local_link?: string;
     status: 'Agendada' | 'Realizada' | 'Cancelada';
+    created_at?: string;
+}
+
+export interface ComercialTask {
+    id: string;
+    titulo: string;
+    descricao?: string;
+    status: 'A Fazer' | 'Fazendo' | 'Revisando' | 'Finalizado';
+    prioridade: 'Alta' | 'Média' | 'Baixa';
+    progresso?: 'Não iniciado' | 'Em andamento' | 'Quase pronto' | 'Concluído';
+    responsaveis_ids?: string[];
+    participantes_ids?: string[];
+    data_inicio?: string;
+    data_termino?: string;
+    data_conclusao?: string;
     created_at?: string;
 }
 
@@ -311,9 +355,11 @@ export interface CalendarEvent {
     hora_inicio?: string;
     hora_fim?: string;
     participantes?: string;
+    participantes_ids?: string[];
+    owner_id?: string;
     descricao?: string;
     cor?: string;
-    origem?: 'manual' | 'crm_reuniao' | 'admin_reuniao';
+    origem?: 'manual' | 'crm_reuniao' | 'admin_reuniao' | 'tarefa';
     reuniao_id?: string;
     created_at?: string;
 }
@@ -376,4 +422,124 @@ export interface TemplateSite {
     created_at: string;
     // Join
     categoria?: TemplateCategoria;
+}
+
+export interface SellerGoal {
+    id: string;
+    seller_name: string;
+    month: string;
+    year: string;
+    goal_value: number;
+    created_at?: string;
+}
+
+export interface FinancialGoal {
+    id: string;
+    name: string;
+    target: number;
+    current: number;
+    unit: string;
+    color: string;
+    created_at?: string;
+}
+
+// ===== DIRETÓRIO MODULE =====
+
+export interface DiretorioCliente {
+    id: string;
+    nome: string;
+    segmento?: string;
+    whatsapp?: string;
+    email?: string;
+    telefone?: string;
+    site?: string;
+    status: 'ativo' | 'inativo';
+    observacoes?: string;
+    created_at?: string;
+}
+
+export interface DiretorioContato {
+    id: string;
+    cliente_id: string;
+    nome: string;
+    cargo?: string;
+    email?: string;
+    whatsapp?: string;
+    observacoes?: string;
+    created_at?: string;
+}
+
+export interface DiretorioLogin {
+    id: string;
+    cliente_id: string;
+    plataforma: string;
+    email_acesso?: string;
+    senha_criptografada?: string;
+    url_acesso?: string;
+    observacoes?: string;
+    created_at?: string;
+    // Client-side only (decrypted):
+    senha_revelada?: string;
+}
+
+export interface DiretorioAssinatura {
+    id: string;
+    cliente_id: string;
+    nome_ferramenta: string;
+    responsavel_pag?: 'nos' | 'cliente';
+    valor_mensal?: number;
+    data_vencimento?: string;
+    status: 'ativa' | 'vencida' | 'cancelada';
+    observacoes?: string;
+    created_at?: string;
+}
+
+export interface DiretorioCusto {
+    id: string;
+    cliente_id: string;
+    mes_ano: string; // "YYYY-MM"
+    servico: string;
+    descricao?: string;
+    valor?: number;
+    tipo?: string;
+    origem: 'manual' | 'api';
+    created_at?: string;
+}
+
+export interface DiretorioColaborador {
+    id: string;
+    nome: string;
+    cargo?: string;
+    email?: string;
+    whatsapp?: string;
+    telefone?: string;
+    data_inicio?: string;
+    tipo_contrato?: string;
+    status: 'ativo' | 'inativo';
+    // Sensitive fields
+    cpf?: string;
+    rg?: string;
+    endereco?: string;
+    data_nascimento?: string;
+    created_at?: string;
+}
+
+export interface DiretorioColabPlataforma {
+    id: string;
+    colaborador_id: string;
+    plataforma: string;
+    email_utilizado?: string;
+    nome_usuario?: string;
+    observacoes?: string;
+    created_at?: string;
+}
+
+export interface DiretorioColabDocumento {
+    id: string;
+    colaborador_id: string;
+    nome_documento: string;
+    categoria?: 'Pessoal' | 'Contratual' | 'Técnico' | 'Outros';
+    arquivo_url?: string;
+    observacoes?: string;
+    created_at?: string;
 }

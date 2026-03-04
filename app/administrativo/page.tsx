@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
     Plus, Clock, Activity, CheckCircle2,
     Calendar, Users, LayoutDashboard, History,
@@ -8,13 +8,13 @@ import {
 } from 'lucide-react';
 import type { AdminDemand, AdminMeeting, TeamMember, CalendarEvent } from '@/lib/types';
 import {
-    useAdminDemands, useAdminMeetings, useTeam, useCalendarEvents,
+    useAdminDemands, useAdminMeetings, useTeam, useCalendarEvents, useUsuarios,
     addAdminDemand, updateAdminDemand, removeAdminDemand,
     addAdminMeeting, updateAdminMeeting, removeAdminMeeting,
     addCalendarEvent, updateCalendarEvent, removeCalendarEvent,
-    createNotificationIfEnabled
+    createNotificationIfEnabled, sendAssigneeNotificationsAndCalendar
 } from '@/lib/hooks';
-import { getBahiaDate, getBahiaDateString } from '@/lib/utils';
+import { getBahiaDate, getBahiaDateString, formatLocalSystemDate } from '@/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 
 const DEMAND_COLUMNS = [
@@ -28,11 +28,12 @@ const PRIORITIES = ['Alta', 'Média', 'Baixa'] as const;
 
 export default function AdministrativoPage() {
     const [activeTab, setActiveTab] = useState<'painel' | 'demandas' | 'reunioes' | 'historico'>('painel');
+    const { user } = useAuth();
     const { data: demandsData, refetch: refetchDemands } = useAdminDemands();
     const { data: meetingsData, refetch: refetchMeetings } = useAdminMeetings();
     const { data: teamMembers } = useTeam();
-    const { data: calendarEvents, refetch: refetchCalendar } = useCalendarEvents();
-    const { user } = useAuth();
+    const { data: allUsuarios } = useUsuarios();
+    const { data: calendarEvents, refetch: refetchCalendar } = useCalendarEvents(user?.id);
 
     const [showDemandModal, setShowDemandModal] = useState(false);
     const [showMeetingModal, setShowMeetingModal] = useState(false);
@@ -44,12 +45,34 @@ export default function AdministrativoPage() {
     const [confirmDeleteMeetingId, setConfirmDeleteMeetingId] = useState<string | null>(null);
 
     // Forms
-    const [demandForm, setDemandForm] = useState<Partial<AdminDemand>>({ titulo: '', descricao: '', responsavel_id: '', data_prevista: '', status: 'A Fazer', prioridade: 'Média' });
-    const [meetingForm, setMeetingForm] = useState<Partial<AdminMeeting>>({ titulo: '', participantes: '', data_hora: '', pauta: '', status: 'Agendada', local_link: '' });
+    const [demandForm, setDemandForm] = useState<Partial<AdminDemand>>({ titulo: '', descricao: '', responsaveis_ids: [], data_prevista: '', status: 'A Fazer', prioridade: 'Média' });
+    const [meetingForm, setMeetingForm] = useState<Partial<AdminMeeting>>({ titulo: '', participantes_ids: [], data_hora: '', pauta: '', status: 'Agendada', local_link: '' });
     const [historyFilter, setHistoryFilter] = useState<'demandas' | 'reunioes'>('demandas');
+    const [showDemandAssigneeList, setShowDemandAssigneeList] = useState(false);
+    const [showMeetingParticipantsList, setShowMeetingParticipantsList] = useState(false);
     const [dashboardPeriod, setDashboardPeriod] = useState<'week' | '15days' | '30days'>('week');
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
     const [showParticipantsList, setShowParticipantsList] = useState(false);
+
+    // Refs for click-outside-close
+    const demandComboRef = useRef<HTMLDivElement>(null);
+    const meetingComboRef = useRef<HTMLDivElement>(null);
+
+    // Click-outside handler
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (demandComboRef.current && !demandComboRef.current.contains(e.target as Node)) setShowDemandAssigneeList(false);
+            if (meetingComboRef.current && !meetingComboRef.current.contains(e.target as Node)) setShowMeetingParticipantsList(false);
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Filter users for Administrativa module: Administrativa + Admin Geral
+    const filteredAdmUsuarios = useMemo(() =>
+        allUsuarios.filter(u => u.categoria === 'Administrativa' || u.categoria === 'Admin Geral'),
+        [allUsuarios]
+    );
 
     useEffect(() => {
         if (toast) {
@@ -57,6 +80,25 @@ export default function AdministrativoPage() {
             return () => clearTimeout(timer);
         }
     }, [toast]);
+
+    // Auto-open demand if task_id is in URL (from Chat Mention)
+    useEffect(() => {
+        if (demandsData && demandsData.length > 0) {
+            const params = new URLSearchParams(window.location.search);
+            const taskId = params.get('task_id');
+            if (taskId) {
+                const demand = demandsData.find(d => d.id === taskId);
+                if (demand) {
+                    setEditingDemand(demand);
+                    setDemandForm({ ...demand });
+                    setShowDemandModal(true);
+                    setActiveTab('demandas');
+                    // Clear the URL to prevent re-opening on manual refresh
+                    window.history.replaceState({}, '', '/administrativo');
+                }
+            }
+        }
+    }, [demandsData]);
 
     // Click outside to close participants list
     useEffect(() => {
@@ -144,52 +186,34 @@ export default function AdministrativoPage() {
 
     // Actions
     async function handleSaveDemand() {
-        if (!demandForm.titulo || !demandForm.responsavel_id) {
-            setToast({ message: 'Preencha título e responsável.', type: 'error' });
+        if (!demandForm.titulo) {
+            setToast({ message: 'Preencha o título.', type: 'error' });
             return;
         }
+        const oldIds = (editingDemand?.responsaveis_ids || []);
+        const newIds = (demandForm.responsaveis_ids || []);
+        const addedIds = newIds.filter(id => !oldIds.includes(id));
         try {
+            let savedId: string;
             if (editingDemand) {
-                const originalDemand = demandsData.find(d => d.id === editingDemand.id);
                 await updateAdminDemand(editingDemand.id, demandForm);
+                savedId = editingDemand.id;
                 setToast({ message: 'Demanda atualizada com sucesso!', type: 'success' });
-
-                // Notify if responsavel changed
-                if (demandForm.responsavel_id && demandForm.responsavel_id !== originalDemand?.responsavel_id) {
-                    const assignedMember = teamMembers.find(t => t.id === demandForm.responsavel_id);
-                    if (assignedMember) {
-                        createNotificationIfEnabled(
-                            assignedMember.id,
-                            'tarefa_atribuida',
-                            'Demanda atribuída a você',
-                            `Você foi atribuído à demanda '${demandForm.titulo}' por ${user?.nome}.`,
-                            '/administrativo',
-                            'administrativo'
-                        ).catch(console.error);
-                    }
-                }
             } else {
                 const created = await addAdminDemand(demandForm as Omit<AdminDemand, 'id' | 'created_at'>);
+                savedId = created.id;
                 setToast({ message: 'Nova demanda criada com sucesso!', type: 'success' });
-
-                // Notify assigned user
-                if (created.responsavel_id) {
-                    const assignedMember = teamMembers.find(t => t.id === created.responsavel_id);
-                    if (assignedMember) {
-                        createNotificationIfEnabled(
-                            assignedMember.id,
-                            'tarefa_atribuida',
-                            'Nova demanda atribuída',
-                            `Você foi atribuído à demanda '${created.titulo}' por ${user?.nome}.`,
-                            '/administrativo',
-                            'administrativo'
-                        ).catch(console.error);
-                    }
-                }
+            }
+            // Send notifications + calendar events to newly added assignees
+            if (addedIds.length > 0) {
+                sendAssigneeNotificationsAndCalendar(
+                    addedIds, demandForm.titulo!, 'Administrativo', savedId,
+                    demandForm.data_prevista, demandForm.data_prevista, '#8B5CF6'
+                ).catch(console.error);
             }
             setShowDemandModal(false);
             setEditingDemand(null);
-            setDemandForm({ titulo: '', descricao: '', responsavel_id: '', data_prevista: '', status: 'A Fazer', prioridade: 'Média' });
+            setDemandForm({ titulo: '', descricao: '', responsaveis_ids: [], data_prevista: '', status: 'A Fazer', prioridade: 'Média' });
             refetchDemands();
         } catch (e) {
             console.error(e);
@@ -198,10 +222,13 @@ export default function AdministrativoPage() {
     }
 
     async function handleSaveMeeting() {
-        if (!meetingForm.titulo || !meetingForm.data_hora || !meetingForm.participantes) {
-            setToast({ message: 'Preencha título, data/hora e participantes.', type: 'error' });
+        if (!meetingForm.titulo || !meetingForm.data_hora) {
+            setToast({ message: 'Preencha título e data/hora.', type: 'error' });
             return;
         }
+        const oldParticipantIds = editingMeeting?.participantes_ids || [];
+        const newParticipantIds = meetingForm.participantes_ids || [];
+        const addedIds = newParticipantIds.filter(id => !oldParticipantIds.includes(id));
 
         try {
             let savedMeeting: AdminMeeting;
@@ -216,9 +243,23 @@ export default function AdministrativoPage() {
             // Sync with Calendar
             await syncToCalendar(savedMeeting);
 
+            // Send notifications to newly added participants
+            if (addedIds.length > 0 && meetingForm.data_hora) {
+                const dateStr = meetingForm.data_hora.split('T')[0];
+                addedIds.forEach(uid => {
+                    const dateLabel = new Date(meetingForm.data_hora!).toLocaleString('pt-BR');
+                    createNotificationIfEnabled(
+                        uid, 'tarefa_atribuida',
+                        `Você foi adicionado à reunião '${meetingForm.titulo}' em ${dateLabel}.`,
+                        `Você foi adicionado à reunião '${meetingForm.titulo}' em ${dateLabel}.`,
+                        '/administrativo', 'Administrativo'
+                    ).catch(console.error);
+                });
+            }
+
             setShowMeetingModal(false);
             setEditingMeeting(null);
-            setMeetingForm({ titulo: '', participantes: '', data_hora: '', pauta: '', status: 'Agendada', local_link: '' });
+            setMeetingForm({ titulo: '', participantes_ids: [], data_hora: '', pauta: '', status: 'Agendada', local_link: '' });
             refetchMeetings();
         } catch (e) {
             console.error(e);
@@ -423,7 +464,7 @@ export default function AdministrativoPage() {
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                             <h2 style={{ fontSize: 18, fontWeight: 600 }}>Demandas Organizacionais</h2>
-                            <button className="btn btn-primary" onClick={() => { setEditingDemand(null); setDemandForm({ titulo: '', descricao: '', responsavel_id: '', data_prevista: '', status: 'A Fazer', prioridade: 'Média' }); setShowDemandModal(true); }}>
+                            <button className="btn btn-primary" onClick={() => { setEditingDemand(null); setDemandForm({ titulo: '', descricao: '', responsaveis_ids: [], data_prevista: '', status: 'A Fazer', prioridade: 'Média' }); setShowDemandModal(true); }}>
                                 <Plus size={14} /> Nova Demanda
                             </button>
                         </div>
@@ -452,17 +493,31 @@ export default function AdministrativoPage() {
                                                     </div>
                                                     {d.descricao && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{d.descricao}</div>}
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                            {d.responsavel_id ? (
-                                                                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600 }}>
-                                                                    {teamMembers.find(t => t.id === d.responsavel_id)?.initials || '?'}
-                                                                </div>
-                                                            ) : <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={12} color="var(--text-muted)" /></div>}
-                                                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{teamMembers.find(t => t.id === d.responsavel_id)?.name.split(' ')[0] || 'Sem resp.'}</span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                            {/* Avatar stack for multiple assignees */}
+                                                            {(d.responsaveis_ids || []).slice(0, 3).map((uid, idx) => {
+                                                                const u = allUsuarios.find(x => x.id === uid);
+                                                                return (
+                                                                    <div key={uid} title={u?.nome || uid} style={{
+                                                                        width: 22, height: 22, borderRadius: '50%', background: 'var(--primary)',
+                                                                        color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                        fontSize: 9, fontWeight: 700, marginLeft: idx > 0 ? -6 : 0,
+                                                                        border: '1px solid var(--bg-primary)', flexShrink: 0
+                                                                    }}>
+                                                                        {(u?.nome || '?').slice(0, 2).toUpperCase()}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            {(d.responsaveis_ids || []).length === 0 && (
+                                                                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={12} color="var(--text-muted)" /></div>
+                                                            )}
+                                                            {(d.responsaveis_ids || []).length > 3 && (
+                                                                <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 4 }}>+{(d.responsaveis_ids || []).length - 3}</span>
+                                                            )}
                                                         </div>
                                                         {d.data_prevista && (
                                                             <div style={{ fontSize: 10, color: new Date(d.data_prevista) < getBahiaDate() && d.status !== 'Finalizado' ? '#EF4444' : 'var(--text-muted)', fontWeight: 500 }}>
-                                                                {new Date(d.data_prevista).toLocaleDateString('pt-br', { day: '2-digit', month: '2-digit' })}
+                                                                {formatLocalSystemDate(d.data_prevista).slice(0, 5)}
                                                             </div>
                                                         )}
                                                     </div>
@@ -626,7 +681,7 @@ export default function AdministrativoPage() {
                                                     <span style={{ color: priorityColors[d.prioridade || 'Média'], fontWeight: 600, fontSize: 11 }}>{d.prioridade || 'Média'}</span>
                                                 </td>
                                                 <td>{d.created_at ? new Date(d.created_at).toLocaleDateString('pt-br') : '-'}</td>
-                                                <td>{d.data_conclusao ? new Date(d.data_conclusao).toLocaleDateString('pt-br') : '-'}</td>
+                                                <td>{d.data_conclusao ? formatLocalSystemDate(d.data_conclusao) : '-'}</td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     <button className="header-action-btn" style={{ color: '#EF4444', padding: 4 }} onClick={async () => {
                                                         if (confirm('Deseja apagar este registro do histórico?')) {
@@ -659,7 +714,7 @@ export default function AdministrativoPage() {
                                             <tr key={m.id}>
                                                 <td style={{ fontWeight: 500 }}>{m.titulo}</td>
                                                 <td>{m.participantes || '-'}</td>
-                                                <td>{m.data_hora ? new Date(m.data_hora).toLocaleDateString('pt-br') : '-'}</td>
+                                                <td>{m.data_hora ? formatLocalSystemDate(m.data_hora) : '-'}</td>
                                                 <td>
                                                     <span style={{
                                                         color: m.status === 'Realizada' ? '#10B981' : '#EF4444',
@@ -705,11 +760,43 @@ export default function AdministrativoPage() {
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div>
-                                    <label className="form-label">Responsável</label>
-                                    <select className="form-select" value={demandForm.responsavel_id || ''} onChange={e => setDemandForm({ ...demandForm, responsavel_id: e.target.value })}>
-                                        <option value="">Selecione um usuário...</option>
-                                        {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                    </select>
+                                    <label className="form-label">Responsáveis</label>
+                                    <div className="combobox-container" ref={demandComboRef}>
+                                        <div className={`combobox-trigger ${showDemandAssigneeList ? 'active' : ''}`} onClick={() => setShowDemandAssigneeList(!showDemandAssigneeList)}>
+                                            {(demandForm.responsaveis_ids || []).length > 0 ? (
+                                                (demandForm.responsaveis_ids || []).map(uid => {
+                                                    const u = filteredAdmUsuarios.find(x => x.id === uid) || allUsuarios.find(x => x.id === uid);
+                                                    return (
+                                                        <span key={uid} className="combobox-chip">
+                                                            {u?.nome || uid}
+                                                            <span className="combobox-chip-remove" onClick={e => { e.stopPropagation(); setDemandForm({ ...demandForm, responsaveis_ids: (demandForm.responsaveis_ids || []).filter(x => x !== uid) }); }}>×</span>
+                                                        </span>
+                                                    );
+                                                })
+                                            ) : <span className="combobox-placeholder">Selecione os responsáveis...</span>}
+                                        </div>
+                                        {showDemandAssigneeList && (
+                                            <div className="combobox-dropdown">
+                                                {filteredAdmUsuarios.map(u => {
+                                                    const isSel = (demandForm.responsaveis_ids || []).includes(u.id);
+                                                    return (
+                                                        <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
+                                                            onClick={() => {
+                                                                const ids = demandForm.responsaveis_ids || [];
+                                                                setDemandForm({ ...demandForm, responsaveis_ids: isSel ? ids.filter(x => x !== u.id) : [...ids, u.id] });
+                                                            }}>
+                                                            <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
+                                                            <div className="combobox-item-info">
+                                                                <div className="combobox-item-name">{u.nome}</div>
+                                                                <div className="combobox-item-role">{u.cargo || u.categoria}</div>
+                                                            </div>
+                                                            <span className="combobox-item-check">✓</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="form-label">Prioridade</label>
@@ -725,7 +812,7 @@ export default function AdministrativoPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div>
                                     <label className="form-label">Prazo de Conclusão</label>
-                                    <input type="date" className="form-input" value={demandForm.data_prevista || ''} onChange={e => setDemandForm({ ...demandForm, data_prevista: e.target.value })} />
+                                    <input type="date" className="form-input" value={demandForm.data_prevista ? demandForm.data_prevista.slice(0, 10) : ''} onChange={e => setDemandForm({ ...demandForm, data_prevista: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="form-label">Status</label>
@@ -785,58 +872,37 @@ export default function AdministrativoPage() {
                                 <input type="text" className="form-input" value={meetingForm.titulo || ''} onChange={e => setMeetingForm({ ...meetingForm, titulo: e.target.value })} />
                             </div>
                             <div>
-                                <label className="form-label">Participantes *</label>
-                                <div style={{ position: 'relative' }}>
-                                    <div
-                                        id="participants-input"
-                                        className="form-input"
-                                        style={{ minHeight: 45, cursor: 'pointer', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}
-                                        onClick={() => setShowParticipantsList(!showParticipantsList)}
-                                    >
-                                        {(meetingForm.participantes || '').split(', ').filter(p => p).length > 0 ? (
-                                            (meetingForm.participantes || '').split(', ').filter(p => p).map(p => (
-                                                <span key={p} style={{ background: 'var(--accent-muted)', color: 'var(--accent-light)', padding: '2px 8px', borderRadius: 4, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                    {p}
-                                                    <span onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const pList = meetingForm.participantes!.split(', ').filter(x => x !== p);
-                                                        setMeetingForm({ ...meetingForm, participantes: pList.join(', ') });
-                                                    }} style={{ cursor: 'pointer' }}>×</span>
-                                                </span>
-                                            ))
-                                        ) : (
-                                            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Selecione os participantes...</span>
-                                        )}
-                                    </div>
-
-                                    {showParticipantsList && (
-                                        <div id="participants-dropdown" style={{
-                                            position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-secondary)',
-                                            border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, zIndex: 10, maxHeight: 250, overflowY: 'auto', padding: 8, marginTop: 4,
-                                            boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
-                                        }}>
-                                            <div
-                                                style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)', marginBottom: 4 }}
-                                                onClick={() => {
-                                                    const allNames = teamMembers.map(m => m.name).join(', ');
-                                                    const isAllSelected = (meetingForm.participantes || '').split(', ').filter(p => p).length === teamMembers.length;
-                                                    setMeetingForm({ ...meetingForm, participantes: isAllSelected ? '' : allNames });
-                                                }}
-                                            >
-                                                <input type="checkbox" checked={(meetingForm.participantes || '').split(', ').filter(p => p).length === teamMembers.length} readOnly />
-                                                <span style={{ fontSize: 13, fontWeight: 600 }}>Selecionar Todos</span>
-                                            </div>
-                                            {teamMembers.map(m => {
-                                                const isSelected = (meetingForm.participantes || '').includes(m.name);
+                                <label className="form-label">Participantes</label>
+                                <div className="combobox-container" ref={meetingComboRef}>
+                                    <div className={`combobox-trigger ${showMeetingParticipantsList ? 'active' : ''}`} onClick={() => setShowMeetingParticipantsList(!showMeetingParticipantsList)}>
+                                        {(meetingForm.participantes_ids || []).length > 0 ? (
+                                            (meetingForm.participantes_ids || []).map(uid => {
+                                                const u = filteredAdmUsuarios.find(x => x.id === uid) || allUsuarios.find(x => x.id === uid);
                                                 return (
-                                                    <div key={m.id} style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', borderRadius: 6, background: isSelected ? 'rgba(249,115,22,0.1)' : 'transparent' }}
+                                                    <span key={uid} className="combobox-chip">
+                                                        {u?.nome || uid}
+                                                        <span className="combobox-chip-remove" onClick={e => { e.stopPropagation(); setMeetingForm({ ...meetingForm, participantes_ids: (meetingForm.participantes_ids || []).filter(x => x !== uid) }); }}>×</span>
+                                                    </span>
+                                                );
+                                            })
+                                        ) : <span className="combobox-placeholder">Selecione os participantes...</span>}
+                                    </div>
+                                    {showMeetingParticipantsList && (
+                                        <div className="combobox-dropdown">
+                                            {filteredAdmUsuarios.map(u => {
+                                                const isSel = (meetingForm.participantes_ids || []).includes(u.id);
+                                                return (
+                                                    <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
                                                         onClick={() => {
-                                                            const parts = meetingForm.participantes ? meetingForm.participantes.split(', ').filter(p => p) : [];
-                                                            const newParts = isSelected ? parts.filter(p => p !== m.name) : [...parts, m.name];
-                                                            setMeetingForm({ ...meetingForm, participantes: newParts.join(', ') });
+                                                            const ids = meetingForm.participantes_ids || [];
+                                                            setMeetingForm({ ...meetingForm, participantes_ids: isSel ? ids.filter(x => x !== u.id) : [...ids, u.id] });
                                                         }}>
-                                                        <input type="checkbox" checked={isSelected} readOnly />
-                                                        <span style={{ fontSize: 13 }}>{m.name}</span>
+                                                        <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
+                                                        <div className="combobox-item-info">
+                                                            <div className="combobox-item-name">{u.nome}</div>
+                                                            <div className="combobox-item-role">{u.cargo || u.categoria}</div>
+                                                        </div>
+                                                        <span className="combobox-item-check">✓</span>
                                                     </div>
                                                 );
                                             })}

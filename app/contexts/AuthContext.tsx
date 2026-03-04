@@ -15,6 +15,8 @@ export interface UsuarioPerfil {
     categoria: UserCategory;
     foto_url?: string;
     modulos_acesso: string[];
+    permissao_diretorio_clientes?: boolean;
+    permissao_diretorio_colaboradores?: 'nenhuma' | 'basico' | 'sensivel';
     // Computed
     initials: string;
 }
@@ -45,8 +47,8 @@ function getInitials(name: string): string {
 }
 
 const DEFAULT_MODULES_BY_CATEGORY: Record<UserCategory, string[]> = {
-    'Admin Geral': ['/', '/comercial', '/financeiro', '/operacional', '/administrativo', '/calendario', '/chat', '/configuracoes', '/notificacoes'],
-    'Administrativa': ['/', '/administrativo', '/calendario', '/chat', '/notificacoes'],
+    'Admin Geral': ['/', '/comercial', '/financeiro', '/operacional', '/administrativo', '/calendario', '/chat', '/templates', '/diretorio', '/configuracoes', '/notificacoes'],
+    'Administrativa': ['/', '/administrativo', '/calendario', '/chat', '/templates', '/diretorio', '/notificacoes'],
     'Financeira': ['/', '/financeiro', '/calendario', '/chat', '/notificacoes'],
     'Operacional': ['/', '/operacional', '/calendario', '/chat', '/notificacoes'],
     'Comercial': ['/', '/comercial', '/calendario', '/chat', '/notificacoes'],
@@ -93,6 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 modulos_acesso: data.modulos_acesso?.length
                     ? data.modulos_acesso
                     : DEFAULT_MODULES_BY_CATEGORY[data.categoria as UserCategory] || ['/'],
+                permissao_diretorio_clientes: data.permissao_diretorio_clientes,
+                permissao_diretorio_colaboradores: data.permissao_diretorio_colaboradores,
                 initials: getInitials(data.nome),
             };
             setUser(perfil);

@@ -21,6 +21,7 @@ import {
   BellOff,
   LogOut,
   FileCode2,
+  BookOpen
 } from 'lucide-react';
 import type { Notification } from '@/lib/types';
 
@@ -40,6 +41,7 @@ const allNavItems: NavItem[] = [
   { href: '/calendario', label: 'Calendário', icon: CalendarDays },
   { href: '/chat', label: 'Chat', icon: MessageSquare },
   { href: '/templates', label: 'Templates', icon: FileCode2 },
+  { href: '/diretorio', label: 'Diretório', icon: BookOpen },
 ];
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
@@ -51,6 +53,7 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
   '/calendario': { title: 'Calendário', subtitle: 'Eventos e reuniões da equipe' },
   '/chat': { title: 'Chat da Equipe', subtitle: 'Comunicação interna' },
   '/templates': { title: 'Templates', subtitle: 'Modelos e ferramentas' },
+  '/diretorio': { title: 'Diretório', subtitle: 'Clientes e Colaboradores' },
   '/configuracoes': { title: 'Configurações', subtitle: 'Gerencie sua equipe e permissões' },
   '/notificacoes': { title: 'Notificações', subtitle: 'Histórico completo de notificações' },
 };
@@ -192,11 +195,16 @@ function AppContent({ children }: { children: React.ReactNode }) {
   // Don't render if no user (middleware should redirect)
   if (!user) return null;
 
-  // Filter nav items by user's allowed modules
-  const visibleNavItems = allNavItems.filter(item => allowed.includes(item.href));
+  // Filter nav items by user's allowed modules, but ALWAYS show Diretório
+  const visibleNavItems = allNavItems.filter(item =>
+    allowed.includes(item.href) || item.href === '/diretorio'
+  );
 
   // Check if user can access current route
-  const canAccessRoute = allowed.includes(pathname) || pathname === '/' || pathname === '/notificacoes';
+  const canAccessRoute = allowed.includes(pathname) ||
+    pathname === '/' ||
+    pathname === '/notificacoes' ||
+    pathname === '/diretorio';
 
   return (
     <div className="app-layout">

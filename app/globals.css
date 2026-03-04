@@ -53,7 +53,7 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px rgba(245, 158, 11, 0.15);
+  --shadow-glow: 0 0 25px rgba(249, 115, 22, 0.5);
 
   /* Transitions */
   --transition-fast: 150ms ease;
@@ -881,7 +881,7 @@ textarea.form-input:focus {
 /* ===== CHAT ===== */
 .chat-layout {
   display: flex;
-  height: calc(100vh - var(--header-height) - 56px);
+  height: calc(100vh - var(--header-height));
   margin: -28px;
   overflow: hidden;
 }
@@ -956,6 +956,8 @@ textarea.form-input:focus {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  /* Fixed: Added relative positioning to keep children dropdowns within bounds */
 }
 
 .chat-header {
@@ -1150,7 +1152,7 @@ textarea.form-input:focus {
 
 .chat-mention-dropdown {
   position: absolute;
-  bottom: 80px;
+  bottom: 84px;
   left: 20px;
   right: 20px;
   background: var(--bg-secondary);
@@ -2947,13 +2949,15 @@ textarea.form-input:focus {
   border-radius: 20px;
   padding: 4px;
   width: fit-content;
+  backdrop-filter: blur(8px);
 }
 
 .tab-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 6px 16px;
+  padding: 8px 18px;
   border-radius: 16px;
   border: none;
   background: transparent;
@@ -2961,7 +2965,8 @@ textarea.form-input:focus {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-normal);
+  white-space: nowrap;
 }
 
 .tab-btn:hover {
@@ -2972,12 +2977,18 @@ textarea.form-input:focus {
 .tab-btn.active {
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .tab-btn svg {
-  opacity: 0.7;
+  opacity: 0.8;
+  transition: opacity var(--transition-fast);
+}
+
+.tab-btn.active svg {
+  opacity: 1;
+  color: var(--accent);
 }
 
 
@@ -3193,17 +3204,20 @@ textarea.form-input:focus {
 .template-card {
   background: var(--surface-card);
   border: 1px solid var(--border-default);
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: all var(--transition-normal);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
 }
 
 .template-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-3px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  border-color: var(--border-hover);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--accent-muted);
 }
 
 .template-card-image {
@@ -3241,16 +3255,19 @@ textarea.form-input:focus {
 }
 
 .template-status-badge {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 4px 11px;
+  padding: 4px 12px;
   border-radius: 20px;
   font-size: 11px;
-  font-weight: 700;
-  color: white;
-  letter-spacing: 0.4px;
-  background: var(--accent) !important;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .template-card-body {
@@ -3645,4 +3662,144 @@ textarea.form-input:focus {
   flex: 1;
   background: var(--bg-tertiary);
   border-radius: 8px;
+}
+
+/* =============================================
+   Orange Multi-Select Combobox
+   ============================================= */
+
+.combobox-container {
+  position: relative;
+}
+
+.combobox-trigger {
+  min-height: 44px;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  transition: border-color 0.2s;
+}
+
+.combobox-trigger:hover,
+.combobox-trigger:focus-within {
+  border-color: #F97316;
+}
+
+.combobox-trigger.active {
+  border-color: #F97316;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15);
+}
+
+.combobox-placeholder {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.combobox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(249, 115, 22, 0.15);
+  color: #F97316;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(249, 115, 22, 0.25);
+}
+
+.combobox-chip-remove {
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  font-weight: 700;
+}
+
+.combobox-chip-remove:hover {
+  opacity: 1;
+}
+
+.combobox-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #111111;
+  border: 1px solid rgba(249, 115, 22, 0.25);
+  border-radius: 10px;
+  z-index: 30;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.combobox-item {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s;
+  font-size: 13px;
+}
+
+.combobox-item:hover {
+  background: rgba(249, 115, 22, 0.08);
+}
+
+.combobox-item.selected {
+  background: rgba(249, 115, 22, 0.12);
+  font-weight: 500;
+}
+
+.combobox-item-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #F97316;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.combobox-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.combobox-item-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.combobox-item-role {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.combobox-item-check {
+  color: #F97316;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.combobox-item.selected .combobox-item-check {
+  opacity: 1;
 }

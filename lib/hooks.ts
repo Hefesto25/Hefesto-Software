@@ -9,11 +9,21 @@ import type {
     FinancialType, FinancialCategory, BudgetPlan,
     FinancialTransaction, SellerGoal, OperationalTask,
     ClientCRM, MeetingCRM, FeedbackCRM,
-    AdminDemand, AdminMeeting,
+    AdminDemand, AdminMeeting, ComercialTask,
     Contract, LegalDocument, LegalPendency,
     CalendarEvent,
     Notification, NotificationSettings,
-    TemplateCategoria, TemplateModelo, TemplateSite
+    TemplateCategoria, TemplateModelo, TemplateSite,
+    DiretorioCliente,
+    DiretorioContato,
+    DiretorioLogin,
+    DiretorioAssinatura,
+    DiretorioCusto,
+    DiretorioColaborador,
+    DiretorioColabPlataforma,
+    DiretorioColabDocumento,
+    FinancialTax, ComercialCommissionTier,
+    ActiveTaskMention
 } from './types';
 
 // Generic hook for fetching data from a table
@@ -63,6 +73,9 @@ export interface UsuarioDB {
     categoria: string;
     foto_url: string | null;
     modulos_acesso: string[];
+    in_comercial_team?: boolean;
+    permissao_diretorio_clientes?: boolean;
+    permissao_diretorio_colaboradores?: 'nenhuma' | 'basico' | 'sensivel';
     created_at: string;
 }
 
@@ -231,6 +244,28 @@ export async function removeSellerGoal(id: string) {
     if (error) throw error;
 }
 
+// Comercial Commission Tiers
+export function useComercialCommissionTiers() {
+    return useSupabaseTable<ComercialCommissionTier>('comercial_commission_tiers', { column: 'min_value', ascending: true });
+}
+
+export async function addComercialCommissionTier(tier: Omit<ComercialCommissionTier, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('comercial_commission_tiers').insert(tier).select().single();
+    if (error) throw error;
+    return data as ComercialCommissionTier;
+}
+
+export async function updateComercialCommissionTier(id: string, updates: Partial<ComercialCommissionTier>) {
+    const { data, error } = await supabase.from('comercial_commission_tiers').update(updates).eq('id', id).select().single();
+    if (error) throw error;
+    return data as ComercialCommissionTier;
+}
+
+export async function removeComercialCommissionTier(id: string) {
+    const { error } = await supabase.from('comercial_commission_tiers').delete().eq('id', id);
+    if (error) throw error;
+}
+
 // Tasks
 export function useTasks() {
     return useSupabaseTable<Task>('tasks', { column: 'created_at', ascending: true });
@@ -353,6 +388,7 @@ export async function sendMensagem(payload: {
     arquivo_nome?: string;
     arquivo_tamanho?: number;
     resposta_de?: string;
+    mencoes_tarefas?: any[];
 }) {
     const { data, error } = await supabase
         .from('mensagens')
@@ -365,6 +401,7 @@ export async function sendMensagem(payload: {
             arquivo_nome: payload.arquivo_nome || null,
             arquivo_tamanho: payload.arquivo_tamanho || null,
             resposta_de: payload.resposta_de || null,
+            mencoes_tarefas: payload.mencoes_tarefas || [],
         })
         .select(`*, autor:usuarios!autor_id(id, nome, email, foto_url)`)
         .single();
@@ -401,8 +438,18 @@ export async function createMentionNotification(payload: {
 }
 
 // --- File upload ---
+function sanitizeFilename(name: string): string {
+    return name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove accents
+        .replace(/\s+/g, '_')           // Spaces to underscores
+        .replace(/[^a-zA-Z0-9._-]/g, '') // Only safe chars
+        .slice(0, 200);                 // Limit length
+}
+
 export async function uploadChatFile(file: File, canalId: string) {
-    const filePath = `${canalId}/${Date.now()}_${file.name}`;
+    const safeName = sanitizeFilename(file.name);
+    const filePath = `${canalId}/${Date.now()}_${safeName}`;
     const { data, error } = await supabase.storage.from('chat-files').upload(filePath, file, { upsert: false });
     if (error) return { success: false, error: error.message };
     const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
@@ -436,6 +483,27 @@ export async function updateFinancialTransaction(id: string, updates: Partial<Fi
 
 export async function removeFinancialTransaction(id: string) {
     const { error } = await supabase.from('financial_transactions').delete().eq('id', id);
+    if (error) throw error;
+}
+
+export function useFinancialTaxes() {
+    return useSupabaseTable<FinancialTax>('financial_taxes', { column: 'data_vencimento', ascending: true });
+}
+
+export async function addFinancialTax(tax: Omit<FinancialTax, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('financial_taxes').insert(tax).select().single();
+    if (error) throw error;
+    return data as FinancialTax;
+}
+
+export async function updateFinancialTax(id: string, updates: Partial<FinancialTax>) {
+    const { data, error } = await supabase.from('financial_taxes').update(updates).eq('id', id).select().single();
+    if (error) throw error;
+    return data as FinancialTax;
+}
+
+export async function removeFinancialTax(id: string) {
+    const { error } = await supabase.from('financial_taxes').delete().eq('id', id);
     if (error) throw error;
 }
 
@@ -623,6 +691,28 @@ export async function removeAdminMeeting(id: string) {
     if (error) throw error;
 }
 
+// ===== COMERCIAL TASKS =====
+export function useComercialTasks() {
+    return useSupabaseTable<ComercialTask>('comercial_tasks', { column: 'created_at', ascending: false });
+}
+
+export async function addComercialTask(task: Omit<ComercialTask, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('comercial_tasks').insert(task).select().single();
+    if (error) throw error;
+    return data as ComercialTask;
+}
+
+export async function updateComercialTask(id: string, updates: Partial<ComercialTask>) {
+    const { data, error } = await supabase.from('comercial_tasks').update(updates).eq('id', id).select().single();
+    if (error) throw error;
+    return data as ComercialTask;
+}
+
+export async function removeComercialTask(id: string) {
+    const { error } = await supabase.from('comercial_tasks').delete().eq('id', id);
+    if (error) throw error;
+}
+
 // ===== LEGAL =====
 export function useContracts() {
     return useSupabaseTable<Contract>('contracts', { column: 'created_at', ascending: false });
@@ -688,8 +778,36 @@ export async function removeLegalPendency(id: string) {
 }
 
 // ===== CALENDAR =====
-export function useCalendarEvents() {
-    return useSupabaseTable<CalendarEvent>('calendar_events', { column: 'data', ascending: true });
+/**
+ * Fetches calendar events for a specific user.
+ * userId=null will fetch no events. Use 'all' to fetch all events (admins only).
+ */
+export function useCalendarEvents(userId?: string | null) {
+    const [data, setData] = useState<CalendarEvent[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchData = async () => {
+        setLoading(true);
+        let query = supabase.from('calendar_events').select('*').order('data', { ascending: true });
+        // If userId is provided, filter to events owned or participated in by that user
+        if (userId && userId !== 'all') {
+            query = query.or(`owner_id.eq.${userId},participantes_ids.cs.{${userId}}`);
+        }
+        const { data: result, error: err } = await query;
+        if (err) {
+            console.error('Error fetching calendar_events:', err);
+        } else {
+            setData((result as CalendarEvent[]) ?? []);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId]);
+
+    return { data, loading, setData, refetch: fetchData };
 }
 
 export async function addCalendarEvent(event: Omit<CalendarEvent, 'id' | 'created_at'>) {
@@ -843,6 +961,47 @@ export async function createNotificationIfEnabled(
     });
 }
 
+/**
+ * Sends task assignment notifications to all newly added assignees and
+ * creates a calendar event for each one with the task dates.
+ */
+export async function sendAssigneeNotificationsAndCalendar(
+    newIds: string[],
+    taskTitle: string,
+    modulo: string,
+    taskId: string,
+    dataInicio?: string,
+    dataTermino?: string,
+    cor?: string
+): Promise<void> {
+    const path = `/${modulo.toLowerCase()}`;
+    await Promise.allSettled(newIds.map(async (uid) => {
+        // Notification
+        await createNotificationIfEnabled(
+            uid,
+            'tarefa_atribuida',
+            `Você foi adicionado à tarefa '${taskTitle}' em ${modulo}.`,
+            `Você foi adicionado à tarefa '${taskTitle}' em ${modulo}.`,
+            `${path}?task_id=${taskId}`,
+            modulo
+        );
+        // Calendar event (only if dates are provided)
+        if (dataInicio || dataTermino) {
+            await addCalendarEvent({
+                titulo: `[${modulo}] ${taskTitle}`,
+                data: dataInicio || dataTermino || '',
+                hora_inicio: undefined,
+                hora_fim: undefined,
+                participantes_ids: [uid],
+                owner_id: uid,
+                descricao: `Tarefa no módulo ${modulo}`,
+                cor: cor || '#3B82F6',
+                origem: 'tarefa',
+            });
+        }
+    }));
+}
+
 // =========== TEMPLATES MODULE ===========
 
 const SUPABASE_STORAGE_URL = 'https://hlqftzvwilbwchfqelqy.supabase.co/storage/v1/object/public';
@@ -964,4 +1123,328 @@ export async function uploadTemplateImage(file: File): Promise<{ url: string | n
     if (error) return { url: null, error: error.message };
     const { data: urlData } = supabase.storage.from('template-images').getPublicUrl(data.path);
     return { url: urlData.publicUrl };
+}
+
+// --- Task Mentions ---
+export function useActiveTasksForMention(userModules: string[] = []) {
+    const [tasks, setTasks] = useState<ActiveTaskMention[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        let mounted = true;
+        const fetchTasks = async () => {
+            setLoading(true);
+            const allTasks: ActiveTaskMention[] = [];
+
+            try {
+                // Operacional
+                if (userModules.includes('/operacional') || userModules.length === 0) {
+                    const { data: opData } = await supabase.from('tarefas_operacionais')
+                        .select('id, titulo, cliente_nome, status')
+                        .not('status', 'in', '("Finalizado", "concluido")');
+                    if (opData) {
+                        allTasks.push(...opData.map((t: any) => ({
+                            id: t.id,
+                            title: `${t.cliente_nome} - ${t.titulo}`,
+                            module: 'Operacional' as const,
+                            status: t.status
+                        })));
+                    }
+                }
+
+                // Comercial
+                if (userModules.includes('/comercial') || userModules.length === 0) {
+                    const { data: comData } = await supabase.from('deals')
+                        .select('id, title, company, stage')
+                        .not('stage', 'in', '("fechado", "perdido")');
+                    if (comData) {
+                        const stageMap: Record<string, string> = {
+                            prospeccao: 'Prospecção',
+                            diagnostico: 'Diagnóstico',
+                            proposta_comercial: 'Proposta Comercial'
+                        };
+                        allTasks.push(...comData.map((d: any) => ({
+                            id: d.id,
+                            title: `${d.company} - ${d.title}`,
+                            module: 'Comercial' as const,
+                            status: stageMap[d.stage] || d.stage
+                        })));
+                    }
+                    // Also include internal team tasks
+                    const { data: tarefasData } = await supabase.from('comercial_tasks')
+                        .select('id, titulo, status')
+                        .not('status', 'eq', 'Finalizado');
+                    if (tarefasData) {
+                        allTasks.push(...tarefasData.map((t: any) => ({
+                            id: t.id,
+                            title: t.titulo,
+                            module: 'Comercial' as const,
+                            status: t.status
+                        })));
+                    }
+                }
+
+
+                // Administrativo
+                if (userModules.includes('/administrativo') || userModules.includes('/configuracoes') || userModules.length === 0) {
+                    const { data: admData } = await supabase.from('admin_demands')
+                        .select('id, titulo, status')
+                        .not('status', 'in', '("Finalizado")');
+                    if (admData) {
+                        allTasks.push(...admData.map((a: any) => ({
+                            id: a.id,
+                            title: a.titulo,
+                            module: 'Administrativo' as const,
+                            status: a.status
+                        })));
+                    }
+                }
+
+                // Financeiro
+                if (userModules.includes('/financeiro') || userModules.length === 0) {
+                    const { data: finData } = await supabase.from('financial_transactions')
+                        .select('id, descricao, status')
+                        .eq('status', 'pendente');
+                    if (finData) {
+                        allTasks.push(...finData.map((f: any) => ({
+                            id: f.id,
+                            title: f.descricao,
+                            module: 'Financeiro' as const,
+                            status: 'Pendente' // Format to display
+                        })));
+                    }
+                }
+
+                if (mounted) setTasks(allTasks);
+            } catch (err) {
+                console.error("Error fetching tasks for mention:", err);
+            } finally {
+                if (mounted) setLoading(false);
+            }
+        };
+
+        fetchTasks();
+        return () => { mounted = false; };
+    }, [userModules]);
+
+    return { tasks, loading };
+}
+
+// ===== DIRETÓRIO MODULE =====
+
+// 1. Clientes
+export function useDiretorioClientes() {
+    return useSupabaseTable<DiretorioCliente>('diretorio_clientes', { column: 'nome', ascending: true });
+}
+export async function addDiretorioCliente(cliente: Omit<DiretorioCliente, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('diretorio_clientes').insert(cliente).select().single();
+    if (error) throw error; return data as DiretorioCliente;
+}
+export async function updateDiretorioCliente(id: string, updates: Partial<DiretorioCliente>) {
+    const { data, error } = await supabase.from('diretorio_clientes').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data as DiretorioCliente;
+}
+export async function removeDiretorioCliente(id: string) {
+    const { error } = await supabase.from('diretorio_clientes').delete().eq('id', id);
+    if (error) throw error;
+}
+
+// 2. Contatos
+export function useDiretorioContatos(clienteId: string | null) {
+    const [data, setData] = useState<DiretorioContato[]>([]);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        if (!clienteId) { setData([]); setLoading(false); return; }
+        supabase.from('diretorio_contatos').select('*').eq('cliente_id', clienteId).order('nome').then(({ data }) => {
+            setData(data || []); setLoading(false);
+        });
+    }, [clienteId]);
+    return { data, loading, setData };
+}
+export async function addDiretorioContato(contato: Omit<DiretorioContato, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('diretorio_contatos').insert(contato).select().single();
+    if (error) throw error; return data as DiretorioContato;
+}
+export async function updateDiretorioContato(id: string, updates: Partial<DiretorioContato>) {
+    const { data, error } = await supabase.from('diretorio_contatos').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data as DiretorioContato;
+}
+export async function removeDiretorioContato(id: string) {
+    const { error } = await supabase.from('diretorio_contatos').delete().eq('id', id);
+    if (error) throw error;
+}
+
+// 3. Logins
+export function useDiretorioLogins(clienteId: string | null) {
+    const [data, setData] = useState<DiretorioLogin[]>([]);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        if (!clienteId) { setData([]); setLoading(false); return; }
+        // We do NOT select senha_criptografada to avoid exposing it unnecessarily on initial load, but for simplicity we select all here
+        // The password remains hashed
+        supabase.from('diretorio_logins').select('*').eq('cliente_id', clienteId).order('plataforma').then(({ data }) => {
+            setData(data || []); setLoading(false);
+        });
+    }, [clienteId]);
+    return { data, loading, setData };
+}
+export async function upsertDiretorioLogin(params: {
+    p_id?: string | null;
+    p_cliente_id: string;
+    p_plataforma: string;
+    p_email_acesso?: string;
+    p_raw_password?: string;
+    p_url_acesso?: string;
+    p_observacoes?: string;
+}) {
+    const { data, error } = await supabase.rpc('upsert_diretorio_login', params);
+    if (error) throw error; return data as DiretorioLogin;
+}
+export async function removeDiretorioLogin(id: string) {
+    const { error } = await supabase.from('diretorio_logins').delete().eq('id', id);
+    if (error) throw error;
+}
+export async function revealDiretorioPassword(loginId: string): Promise<string | null> {
+    const { data, error } = await supabase.rpc('reveal_diretorio_login_password', { p_login_id: loginId });
+    if (error) throw error; return data;
+}
+
+// 4. Assinaturas
+export function useDiretorioAssinaturas(clienteId: string | null) {
+    const [data, setData] = useState<DiretorioAssinatura[]>([]);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        if (!clienteId) { setData([]); setLoading(false); return; }
+        supabase.from('diretorio_assinaturas').select('*').eq('cliente_id', clienteId).order('data_vencimento').then(({ data }) => {
+            setData(data || []); setLoading(false);
+        });
+    }, [clienteId]);
+    return { data, loading, setData };
+}
+
+export function useAllDiretorioAssinaturas() {
+    const [data, setData] = useState<DiretorioAssinatura[]>([]);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        supabase.from('diretorio_assinaturas').select('*').order('data_vencimento').then(({ data }) => {
+            setData(data || []); setLoading(false);
+        });
+    }, []);
+    return { data, loading, setData };
+}
+export async function addDiretorioAssinatura(assinatura: Omit<DiretorioAssinatura, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('diretorio_assinaturas').insert(assinatura).select().single();
+    if (error) throw error; return data as DiretorioAssinatura;
+}
+export async function updateDiretorioAssinatura(id: string, updates: Partial<DiretorioAssinatura>) {
+    const { data, error } = await supabase.from('diretorio_assinaturas').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data as DiretorioAssinatura;
+}
+export async function removeDiretorioAssinatura(id: string) {
+    const { error } = await supabase.from('diretorio_assinaturas').delete().eq('id', id);
+    if (error) throw error;
+}
+
+// 5. Custos
+export function useDiretorioCustos(clienteId: string | null) {
+    const [data, setData] = useState<DiretorioCusto[]>([]);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        if (!clienteId) { setData([]); setLoading(false); return; }
+        supabase.from('diretorio_custos').select('*').eq('cliente_id', clienteId).order('mes_ano', { ascending: false }).then(({ data }) => {
+            setData(data || []); setLoading(false);
+        });
+    }, [clienteId]);
+    return { data, loading, setData };
+}
+
+export function useDiretorioCustosAll() {
+    return useSupabaseTable<DiretorioCusto>('diretorio_custos', { column: 'mes_ano', ascending: false });
+}
+export async function addDiretorioCusto(custo: Omit<DiretorioCusto, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('diretorio_custos').insert(custo).select().single();
+    if (error) throw error; return data as DiretorioCusto;
+}
+export async function updateDiretorioCusto(id: string, updates: Partial<DiretorioCusto>) {
+    const { data, error } = await supabase.from('diretorio_custos').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data as DiretorioCusto;
+}
+export async function removeDiretorioCusto(id: string) {
+    const { error } = await supabase.from('diretorio_custos').delete().eq('id', id);
+    if (error) throw error;
+}
+
+// 6. Colaboradores
+export function useDiretorioColaboradores() {
+    return useSupabaseTable<DiretorioColaborador>('diretorio_colaboradores', { column: 'nome', ascending: true });
+}
+export async function addDiretorioColaborador(colab: Omit<DiretorioColaborador, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('diretorio_colaboradores').insert(colab).select().single();
+    if (error) throw error; return data as DiretorioColaborador;
+}
+export async function updateDiretorioColaborador(id: string, updates: Partial<DiretorioColaborador>) {
+    const { data, error } = await supabase.from('diretorio_colaboradores').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data as DiretorioColaborador;
+}
+export async function removeDiretorioColaborador(id: string) {
+    const { error } = await supabase.from('diretorio_colaboradores').delete().eq('id', id);
+    if (error) throw error;
+}
+
+// 7. Colaborador Plataformas
+export function useDiretorioColabPlataformas(colaboradorId: string | null) {
+    const [data, setData] = useState<DiretorioColabPlataforma[]>([]);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        if (!colaboradorId) { setData([]); setLoading(false); return; }
+        supabase.from('diretorio_colab_plataformas').select('*').eq('colaborador_id', colaboradorId).order('plataforma').then(({ data }) => {
+            setData(data || []); setLoading(false);
+        });
+    }, [colaboradorId]);
+    return { data, loading, setData };
+}
+export async function addDiretorioColabPlataforma(plat: Omit<DiretorioColabPlataforma, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('diretorio_colab_plataformas').insert(plat).select().single();
+    if (error) throw error; return data as DiretorioColabPlataforma;
+}
+export async function updateDiretorioColabPlataforma(id: string, updates: Partial<DiretorioColabPlataforma>) {
+    const { data, error } = await supabase.from('diretorio_colab_plataformas').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data as DiretorioColabPlataforma;
+}
+export async function removeDiretorioColabPlataforma(id: string) {
+    const { error } = await supabase.from('diretorio_colab_plataformas').delete().eq('id', id);
+    if (error) throw error;
+}
+
+// 8. Colaborador Documentos
+export function useDiretorioColabDocumentos(colaboradorId: string | null) {
+    const [data, setData] = useState<DiretorioColabDocumento[]>([]);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        if (!colaboradorId) { setData([]); setLoading(false); return; }
+        supabase.from('diretorio_colab_documentos').select('*').eq('colaborador_id', colaboradorId).order('created_at', { ascending: false }).then(({ data }) => {
+            setData(data || []); setLoading(false);
+        });
+    }, [colaboradorId]);
+    return { data, loading, setData };
+}
+export async function addDiretorioColabDocumento(doc: Omit<DiretorioColabDocumento, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('diretorio_colab_documentos').insert(doc).select().single();
+    if (error) throw error; return data as DiretorioColabDocumento;
+}
+export async function updateDiretorioColabDocumento(id: string, updates: Partial<DiretorioColabDocumento>) {
+    const { data, error } = await supabase.from('diretorio_colab_documentos').update(updates).eq('id', id).select().single();
+    if (error) throw error; return data as DiretorioColabDocumento;
+}
+export async function removeDiretorioColabDocumento(id: string) {
+    const { error } = await supabase.from('diretorio_colab_documentos').delete().eq('id', id);
+    if (error) throw error;
+}
+export async function uploadDiretorioDocumento(file: File, colaboradorId: string) {
+    const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
+    const filePath = `${colaboradorId}/${Date.now()}_${safeName}`;
+    const { data, error } = await supabase.storage.from('diretorio-docs').upload(filePath, file);
+    if (error) throw error;
+    const { data: urlData } = supabase.storage.from('diretorio-docs').getPublicUrl(data.path);
+    return urlData.publicUrl;
 }

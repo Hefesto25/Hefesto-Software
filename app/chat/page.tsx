@@ -1,18 +1,20 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Hash, Plus, Paperclip, X, Users, Trash2, Settings, Reply, Download, FileText, Image as ImageIcon, FolderKanban } from 'lucide-react';
+import { Send, Hash, Plus, Paperclip, X, Users, Trash2, Settings, Reply, Download, FileText, Image as ImageIcon, FolderKanban, Activity, LayoutDashboard, Clock, ChevronLeft } from 'lucide-react';
 import {
     useCanais, useCanalParticipantes, useMensagens, useUsuarios,
     createCanal, updateCanal, deleteCanal, addParticipante, removeParticipante,
-    sendMensagem, deleteMensagem, createMentionNotification, uploadChatFile
+    sendMensagem, deleteMensagem, createMentionNotification, uploadChatFile,
+    useActiveTasksForMention
 } from '@/lib/hooks';
-import type { Canal, Mensagem } from '@/lib/types';
+import type { Canal, Mensagem, ActiveTaskMention } from '@/lib/types';
 import type { UsuarioDB } from '@/lib/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { AVATAR_COLORS } from '@/lib/utils';
 
-const AVATAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#EF4444', '#06B6D4', '#14B8A6', '#6366F1', '#F97316'];
+
 function getColor(name: string) { return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]; }
 function getInitials(name: string) { return name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase(); }
 
@@ -60,12 +62,22 @@ export default function ChatPage() {
     const [formTipo, setFormTipo] = useState<'canal' | 'grupo_projeto'>('canal');
     const [formParticipantes, setFormParticipantes] = useState<string[]>([]);
 
-    // Mention state
+    // Menção de Usuários
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
     const [mentionIdx, setMentionIdx] = useState(0);
+
+    // Menção de Tarefas
+    const [taskMentionQuery, setTaskMentionQuery] = useState<string | null>(null);
+    const [taskMentionIdx, setTaskMentionIdx] = useState(0);
+    const [selectedTaskModule, setSelectedTaskModule] = useState<ActiveTaskMention['module'] | null>(null);
+    const [selectedTasks, setSelectedTasks] = useState<ActiveTaskMention[]>([]);
+
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Fetch active tasks for mentions based on user permissions
+    const { tasks: activeTasks } = useActiveTasksForMention(user?.modulos_acesso || []);
 
     // Presence state
     const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
@@ -170,16 +182,42 @@ export default function ChatPage() {
             .slice(0, 6);
     }, [mentionQuery, participantes, userId]);
 
+    const filteredTasks = useMemo(() => {
+        if (taskMentionQuery === null) return [];
+        let filtered = activeTasks;
+        if (selectedTaskModule) {
+            filtered = filtered.filter(t => t.module === selectedTaskModule);
+        }
+        if (taskMentionQuery) {
+            filtered = filtered.filter(t => t.title.toLowerCase().includes(taskMentionQuery.toLowerCase()));
+        }
+        return filtered.slice(0, 10);
+    }, [taskMentionQuery, selectedTaskModule, activeTasks]);
+
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const val = e.target.value;
         setMessageText(val);
-        // Check for @ mention
         const cursorPos = e.target.selectionStart;
         const textBeforeCursor = val.slice(0, cursorPos);
-        const atMatch = textBeforeCursor.match(/@(\w*)$/);
-        if (atMatch) {
-            setMentionQuery(atMatch[1]);
+
+        // Check for @@ task mention first
+        const doubleAtMatch = textBeforeCursor.match(/@@([^@]*)$/);
+        if (doubleAtMatch) {
+            setTaskMentionQuery(doubleAtMatch[1]);
+            setTaskMentionIdx(0);
+            setMentionQuery(null);
+            return;
+        } else {
+            setTaskMentionQuery(null);
+            setSelectedTaskModule(null);
+        }
+
+        // Check for @ user mention only if not a task mention
+        const singleAtMatch = textBeforeCursor.match(/(^|\s)@(\w*)$/);
+        if (singleAtMatch) {
+            setMentionQuery(singleAtMatch[2]);
             setMentionIdx(0);
+            setTaskMentionQuery(null);
         } else {
             setMentionQuery(null);
         }
@@ -196,20 +234,46 @@ export default function ChatPage() {
         inputRef.current.focus();
     };
 
+    const insertTaskMention = (task: ActiveTaskMention) => {
+        if (!inputRef.current) return;
+        const cursorPos = inputRef.current.selectionStart;
+        const textBefore = messageText.slice(0, cursorPos);
+        const textAfter = messageText.slice(cursorPos);
+
+        // Formato visual no texto: [[Título da Tarefa | Módulo | Fazendo]]
+        const formattedTaskText = `[[${task.title} | ${task.module} | ${task.status}]] `;
+        const newBefore = textBefore.replace(/@@([^@]*)$/, formattedTaskText);
+
+        setMessageText(newBefore + textAfter);
+        setSelectedTasks(prev => [...prev.filter(t => t.id !== task.id), task]);
+        setTaskMentionQuery(null);
+        setSelectedTaskModule(null);
+        inputRef.current.focus();
+    };
+
     // Send message
     const handleSend = async () => {
         if (!messageText.trim() || !activeCanalId || !userId || !user) return;
 
         const text = messageText.trim();
+        // Check which selected tasks are actually present in the final message text
+        const finalMentionedTasks = selectedTasks.filter(task => {
+            const pattern = `[[${task.title} | ${task.module} | ${task.status}]]`;
+            return text.includes(pattern);
+        });
+
         setMessageText('');
         setReplyTo(null);
         setMentionQuery(null);
+        setTaskMentionQuery(null);
+        setSelectedTasks([]);
 
         const result = await sendMensagem({
             canal_id: activeCanalId,
             autor_id: userId,
             conteudo: text,
             resposta_de: replyTo?.id || undefined,
+            mencoes_tarefas: finalMentionedTasks.length > 0 ? finalMentionedTasks : undefined,
         });
 
         // Process mentions for notifications
@@ -236,6 +300,21 @@ export default function ChatPage() {
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        // Task Mention Navigation
+        if (taskMentionQuery !== null) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setTaskMentionIdx(i => Math.min(i + 1, filteredTasks.length - 1)); return; }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setTaskMentionIdx(i => Math.max(i - 1, 0)); return; }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                if (filteredTasks.length > 0) {
+                    insertTaskMention(filteredTasks[taskMentionIdx]);
+                }
+                return;
+            }
+            if (e.key === 'Escape') { setTaskMentionQuery(null); setSelectedTaskModule(null); return; }
+        }
+
+        // User Mention Navigation
         if (mentionQuery !== null && mentionMembers.length > 0) {
             if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx(i => Math.min(i + 1, mentionMembers.length - 1)); return; }
             if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIdx(i => Math.max(i - 1, 0)); return; }
@@ -246,6 +325,7 @@ export default function ChatPage() {
             }
             if (e.key === 'Escape') { setMentionQuery(null); return; }
         }
+
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
@@ -339,14 +419,58 @@ export default function ChatPage() {
         setModal('edit');
     };
 
-    // Render mention text with highlighted mentions
-    const renderMsgText = (text: string) => {
-        const parts = text.split(/(@\S+)/g);
-        return parts.map((part, i) =>
-            part.startsWith('@')
-                ? <span key={i} className="chat-mention">{part}</span>
-                : <span key={i}>{part}</span>
-        );
+    // Handle task click for redirection
+    const handleTaskClick = (taskId: string, moduleName: string) => {
+        const moduleMap: Record<string, string> = {
+            'Operacional': '/operacional',
+            'Comercial': '/comercial',
+            'Administrativo': '/administrativo',
+            'Financeiro': '/financeiro'
+        };
+        const path = moduleMap[moduleName] || '/';
+        const url = `${path}?task_id=${taskId}`;
+        window.open(url, '_blank');
+    };
+
+    // Render mention text with highlighted mentions (users and tasks)
+    const renderMsgText = (text: string, msg: Mensagem) => {
+        const parts = text.split(/(\[\[.*?\]\]|@\S+)/g);
+        return parts.map((part, i) => {
+            if (part.startsWith('[[') && part.endsWith(']]')) {
+                // Task Mention
+                const inner = part.slice(2, -2);
+                const segments = inner.split('|').map(s => s.trim());
+                if (segments.length === 3) {
+                    const [title, module, status] = segments;
+                    // Find task ID from the saved mentions array, if available
+                    const taskData = msg.mencoes_tarefas?.find(t => t.title === title && t.module === module);
+                    const taskId = taskData?.id;
+
+                    return (
+                        <span
+                            key={i}
+                            onClick={taskId ? () => handleTaskClick(taskId, module) : undefined}
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 mx-1 mb-[2px] rounded border align-middle transition-colors ${taskId ? 'cursor-pointer' : 'cursor-default'}`}
+                            style={{
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                borderColor: 'rgba(59, 130, 246, 0.2)',
+                                color: 'rgb(96, 165, 250)'
+                            }}
+                            title={taskId ? "Clique para ir até a tarefa" : "Tarefa não encontrada"}
+                        >
+                            <span className="font-medium" style={{ fontSize: '0.9em', lineHeight: 1 }}>{title}</span>
+                            <span style={{ fontSize: '0.65em', textTransform: 'uppercase', fontWeight: 700, opacity: 0.7, background: 'rgba(0,0,0,0.2)', padding: '1px 4px', borderRadius: 3 }}>
+                                {module}
+                            </span>
+                        </span>
+                    );
+                }
+            }
+            if (part.startsWith('@')) {
+                return <span key={i} className="chat-mention">{part}</span>;
+            }
+            return <span key={i}>{part}</span>;
+        });
     };
 
     // Group messages + date separators
@@ -376,14 +500,14 @@ export default function ChatPage() {
 
             elements.push(
                 <div key={msg.id} className={`chat-message ${isGrouped ? 'grouped' : ''} ${msg.deletada ? 'deleted' : ''}`} id={`msg-${msg.id}`}>
-                    {!isGrouped && !msg.deletada && (
+                    {!isGrouped && (
                         <div className="chat-message-avatar" style={{ background: authorColor }}>
                             {getInitials(authorName)}
                         </div>
                     )}
                     {isGrouped && <div className="chat-message-avatar-spacer" />}
                     <div className="chat-message-content">
-                        {!isGrouped && !msg.deletada && (
+                        {!isGrouped && (
                             <div className="chat-message-header">
                                 <span className="chat-message-name">{authorName}</span>
                                 <span className="chat-message-time">{formatTime(msg.created_at)}</span>
@@ -402,7 +526,7 @@ export default function ChatPage() {
                         )}
 
                         {msg.deletada ? (
-                            <div className="chat-message-text deleted-text">🚫 Mensagem apagada</div>
+                            <div className="chat-message-text deleted-text">Mensagem apagada</div>
                         ) : msg.tipo === 'imagem' && msg.arquivo_url ? (
                             <div className="chat-message-image">
                                 <img src={msg.arquivo_url} alt="Imagem" loading="lazy" onClick={() => window.open(msg.arquivo_url!, '_blank')} />
@@ -419,7 +543,7 @@ export default function ChatPage() {
                                 </a>
                             </div>
                         ) : (
-                            <div className="chat-message-text">{renderMsgText(msg.conteudo || '')}</div>
+                            <div className="chat-message-text">{renderMsgText(msg.conteudo || '', msg)}</div>
                         )}
 
                         {/* Actions */}
@@ -545,6 +669,88 @@ export default function ChatPage() {
                                         {p.usuario?.nome}
                                     </div>
                                 ))}
+                            </div>
+                        )}
+
+                        {/* Task Mention (@@) dropdown */}
+                        {taskMentionQuery !== null && (
+                            <div className="chat-mention-dropdown" style={{ width: 400, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 320 }}>
+                                {/* Area Selection View */}
+                                {!selectedTaskModule && !taskMentionQuery && (
+                                    <div style={{ padding: '20px' }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 16, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selecione uma Área</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                            {(user?.modulos_acesso || []).includes('/comercial') && (
+                                                <button onClick={() => setSelectedTaskModule('Comercial')} style={{ padding: '16px', borderRadius: 12, background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--brand-primary)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}>
+                                                    <div style={{ padding: 10, borderRadius: '50%', background: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' }}><Activity size={20} /></div>
+                                                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Comercial</span>
+                                                </button>
+                                            )}
+                                            {((user?.modulos_acesso || []).includes('/operacional') || !user?.modulos_acesso) && (
+                                                <button onClick={() => setSelectedTaskModule('Operacional')} style={{ padding: '16px', borderRadius: 12, background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--brand-primary)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}>
+                                                    <div style={{ padding: 10, borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10B981' }}><LayoutDashboard size={20} /></div>
+                                                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Operacional</span>
+                                                </button>
+                                            )}
+                                            {((user?.modulos_acesso || []).includes('/administrativo') || (user?.modulos_acesso || []).includes('/configuracoes')) && (
+                                                <button onClick={() => setSelectedTaskModule('Administrativo')} style={{ padding: '16px', borderRadius: 12, background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--brand-primary)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}>
+                                                    <div style={{ padding: 10, borderRadius: '50%', background: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6' }}><Users size={20} /></div>
+                                                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Administrativo</span>
+                                                </button>
+                                            )}
+                                            {(user?.modulos_acesso || []).includes('/financeiro') && (
+                                                <button onClick={() => setSelectedTaskModule('Financeiro')} style={{ padding: '16px', borderRadius: 12, background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--brand-primary)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}>
+                                                    <div style={{ padding: 10, borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B' }}><Clock size={20} /></div>
+                                                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Financeiro</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Task Selection View */}
+                                {(selectedTaskModule || taskMentionQuery) && (
+                                    <>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border-default)', background: 'var(--bg-primary)' }}>
+                                            {!taskMentionQuery && (
+                                                <button
+                                                    onClick={() => setSelectedTaskModule(null)}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, padding: '4px 8px', borderRadius: 4 }}
+                                                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
+                                                    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                                >
+                                                    <ChevronLeft size={14} /> Voltar
+                                                </button>
+                                            )}
+                                            <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                {taskMentionQuery ? `Buscando "${taskMentionQuery}"` : selectedTaskModule}
+                                            </div>
+                                            {selectedTaskModule && (
+                                                <span style={{ fontSize: 11, background: 'rgba(59, 130, 246, 0.1)', color: 'var(--brand-primary)', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>{filteredTasks.length} tarefas</span>
+                                            )}
+                                        </div>
+                                        <div style={{ overflowY: 'auto', padding: '8px 0' }}>
+                                            {filteredTasks.length === 0 ? (
+                                                <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Nenhuma tarefa ativa encontrada.</div>
+                                            ) : (
+                                                filteredTasks.map((task, i) => (
+                                                    <div
+                                                        key={task.id}
+                                                        className={`chat-mention-item ${i === taskMentionIdx ? 'active' : ''}`}
+                                                        onClick={() => insertTaskMention(task)}
+                                                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '10px 16px', gap: 4, height: 'auto' }}
+                                                    >
+                                                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', lineHeight: 1.3 }}>{task.title}</div>
+                                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                            <span style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: 4 }}>{task.module}</span>
+                                                            <span style={{ fontSize: 12, color: 'var(--brand-primary)', fontWeight: 500 }}>{task.status}</span>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
 
