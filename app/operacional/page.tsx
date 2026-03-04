@@ -63,9 +63,9 @@ export default function OperacionalPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Filter users for Operacional module: Operacional + Admin Geral
+    // Filter users for Operacional module: Admin Geral or has access to /operacional
     const filteredOpUsuarios = useMemo(() =>
-        allUsuarios.filter(u => u.categoria === 'Operacional' || u.categoria === 'Admin Geral'),
+        allUsuarios.filter(u => u.categoria === 'Admin Geral' || (u.modulos_acesso && u.modulos_acesso.includes('/operacional'))),
         [allUsuarios]
     );
 
@@ -202,29 +202,67 @@ export default function OperacionalPage() {
     }
 
     // Dashboard data
-    const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
+    const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#A78BFA', '#06B6D4'];
+    const PIE_COLORS_DEADLINE = ['#10B981', '#F59E0B', '#EF4444', '#6B7280']; // No Prazo, Prox, Atrasado, Sem Prazo
 
-    // As per user request, finished tasks should not appear in the dashboard graphs or totals
     const totalTasks = kanbanTasks.length;
-    const completedTasks = 0; // Finalized tasks are excluded
+
+    // 5. Completion metrics for the current month
+    const currentDate = new Date(getBahiaDateString() + 'T12:00:00');
+    const currentMonthStr = `${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
+    const finishedThisMonthTasks = finishedTasks.filter(t => {
+        if (!t.data_conclusao) return false;
+        const d = new Date(t.data_conclusao);
+        return `${d.getMonth() + 1}/${d.getFullYear()}` === currentMonthStr;
+    });
+    const completedTasksThisMonth = finishedThisMonthTasks.length;
     const pendingTasks = totalTasks;
 
-    const categoryCount = tasks.filter(t => t.status !== 'Finalizado').reduce((acc, t) => { const cat = t.categoria_tarefa || 'Outros'; acc[cat] = (acc[cat] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const categoryCount = kanbanTasks.reduce((acc, t) => { const cat = t.categoria_tarefa || 'Outros'; acc[cat] = (acc[cat] || 0) + 1; return acc; }, {} as Record<string, number>);
     const categoryData = Object.keys(categoryCount).map(k => ({ name: k, value: categoryCount[k] }));
 
-    const memberPerfCount = finishedTasks.reduce((acc, t) => { const m = t.responsavel_id || 'Não Atribuído'; acc[m] = (acc[m] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const memberPerfData = Object.keys(memberPerfCount).map(k => ({ name: k, amount: memberPerfCount[k] }));
+    // 1. Deadline Health
+    const deadlineHealth = kanbanTasks.reduce((acc, t) => {
+        if (!t.data_termino) { acc['Sem Prazo']++; return acc; }
+        const diffDays = Math.ceil((new Date(t.data_termino + 'T12:00:00').getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) acc['Atrasadas']++;
+        else if (diffDays <= 3) acc['Próximas (≤3 dias)']++;
+        else acc['No Prazo']++;
+        return acc;
+    }, { 'No Prazo': 0, 'Próximas (≤3 dias)': 0, 'Atrasadas': 0, 'Sem Prazo': 0 } as Record<string, number>);
+    const deadlineData = [
+        { name: 'No Prazo', value: deadlineHealth['No Prazo'] },
+        { name: 'Próximas (≤3 dias)', value: deadlineHealth['Próximas (≤3 dias)'] },
+        { name: 'Atrasadas', value: deadlineHealth['Atrasadas'] },
+        { name: 'Sem Prazo', value: deadlineHealth['Sem Prazo'] }
+    ].filter(d => d.value > 0);
 
-    const pendingByMemberCount = kanbanTasks.reduce((acc, t) => { const m = t.responsavel_id || 'Não Atribuído'; acc[m] = (acc[m] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const pendingByMemberData = Object.keys(pendingByMemberCount).map(k => ({ name: k, amount: pendingByMemberCount[k] }));
+    // 2. Upcoming Deadlines Radar
+    const upcomingDeadlines = kanbanTasks
+        .filter(t => t.data_termino)
+        .sort((a, b) => new Date(a.data_termino! + 'T12:00:00').getTime() - new Date(b.data_termino! + 'T12:00:00').getTime())
+        .slice(0, 8);
 
-    const periodCount = finishedTasks.filter(t => t.data_conclusao).reduce((acc, t) => {
-        const d = new Date(t.data_conclusao!);
-        const monthYear = `${d.getMonth() + 1}/${d.getFullYear()}`;
-        acc[monthYear] = (acc[monthYear] || 0) + 1;
+    // 3. Workload by Client
+    const workloadByClientCount = kanbanTasks.reduce((acc, t) => {
+        const cName = t.cliente_nome || 'Sem Cliente Vinculado';
+        acc[cName] = (acc[cName] || 0) + 1;
         return acc;
     }, {} as Record<string, number>);
-    const periodData = Object.keys(periodCount).map(k => ({ name: k, amount: periodCount[k] })).sort((a, b) => a.name.localeCompare(b.name));
+    const workloadByClientData = Object.keys(workloadByClientCount)
+        .map(k => ({ name: k, amount: workloadByClientCount[k] }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 10);
+
+    // 4. Effort Analysis by Member
+    const effortByMemberCount = kanbanTasks.reduce((acc, t) => {
+        const m = t.responsavel_id || 'Não Atribuído';
+        acc[m] = (acc[m] || 0) + (t.dificuldade || 1);
+        return acc;
+    }, {} as Record<string, number>);
+    const effortByMemberData = Object.keys(effortByMemberCount)
+        .map(k => ({ name: k, amount: effortByMemberCount[k] }))
+        .sort((a, b) => b.amount - a.amount);
 
     // --- OPERAÇÕES TAB DATA ---
     const activeClients = clients ? clients.filter(c => c.status === 'Ativo') : [];
@@ -465,29 +503,126 @@ export default function OperacionalPage() {
             {/* TAB PAINEL */}
             {activeTab === 'painel' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24 }}>
-                        <div className="stat-card"><h3>Total de Tarefas</h3><div className="value">{totalTasks}</div></div>
-                        <div className="stat-card"><h3>Tarefas Pendentes</h3><div className="value">{pendingTasks}</div></div>
-                        <div className="stat-card" style={{ display: 'none' }}><h3>Tarefas Concluídas</h3><div className="value">{completedTasks}</div></div>
-                        <div className="stat-card" style={{ display: 'none' }}><h3>Taxa de Conclusão</h3><div className="value">{totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0}%</div></div>
+                    {/* Top Stat Cards */}
+                    <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 24 }}>
+                        <div className="kpi-card" style={{ borderBottom: '3px solid #3B82F6' }}>
+                            <div className="kpi-card-value" style={{ color: '#3B82F6', fontSize: 24 }}>{pendingTasks}</div>
+                            <div className="kpi-card-label">Tarefas em Andamento</div>
+                        </div>
+                        <div className="kpi-card" style={{ borderBottom: '3px solid #10B981' }}>
+                            <div className="kpi-card-value" style={{ color: '#10B981', fontSize: 24 }}>{completedTasksThisMonth}</div>
+                            <div className="kpi-card-label">Concluídas no Mês Atual</div>
+                        </div>
+                        <div className="kpi-card" style={{ borderBottom: '3px solid #F59E0B' }}>
+                            <div className="kpi-card-value" style={{ color: '#F59E0B', fontSize: 24 }}>
+                                {(completedTasksThisMonth + pendingTasks) > 0
+                                    ? Math.round((completedTasksThisMonth / (completedTasksThisMonth + pendingTasks)) * 100)
+                                    : 0}%
+                            </div>
+                            <div className="kpi-card-label">Taxa de Conclusão (Mês Atual)</div>
+                        </div>
+                        <div className="kpi-card" style={{ borderBottom: '3px solid #EF4444' }}>
+                            <div className="kpi-card-value" style={{ color: deadlineHealth['Atrasadas'] > 0 ? '#EF4444' : 'var(--text-primary)', fontSize: 24 }}>{deadlineHealth['Atrasadas']}</div>
+                            <div className="kpi-card-label">Tarefas Atrasadas</div>
+                        </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-                        <div className="chart-container" style={{ borderRadius: 12 }}>
-                            <h2>Concluídas vs Período</h2>
+
+                    {/* Middle Section: Upcoming Radar & Deadline Health */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24 }}>
+                        {/* Upcoming Deadlines Radar */}
+                        <div className="table-card" style={{ height: 380, display: 'flex', flexDirection: 'column' }}>
+                            <h2 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 }}><Clock size={18} /> Radar de Entregas (Próximas e Atrasadas)</h2>
+                            <div style={{ flex: 1, overflowY: 'auto', marginTop: 12 }}>
+                                {upcomingDeadlines.length > 0 ? (
+                                    <table className="data-table" style={{ margin: 0 }}>
+                                        <thead>
+                                            <tr>
+                                                <th>Tarefa</th>
+                                                <th>Cliente</th>
+                                                <th>Responsável</th>
+                                                <th style={{ textAlign: 'center' }}>Prazo Limite</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {upcomingDeadlines.map(t => (
+                                                <tr key={t.id} onClick={() => { setEditTaskForm(t); setShowEditTaskModal(true); }} style={{ cursor: 'pointer' }}>
+                                                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }} title={t.titulo}>{t.titulo}</td>
+                                                    <td style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}>{t.cliente_nome || '-'}</td>
+                                                    <td>{t.responsavel_id || '-'}</td>
+                                                    <td style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                                        {formatLocalSystemDate(t.data_termino!)}
+                                                        {getDeadlineIndicator(t.data_termino)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="text-center text-muted" style={{ padding: '40px 0' }}>Nenhuma entrega agendada.</div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Deadline Health Pie Chart */}
+                        <div className="chart-container" style={{ borderRadius: 12, height: 380 }}>
+                            <h2 style={{ fontSize: 16 }}>Saúde dos Prazos</h2>
                             <div style={{ height: 300 }}>
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={periodData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                                        <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-                                        <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)' }} />
-                                        <Bar dataKey="amount" fill="#10B981" radius={[4, 4, 0, 0]} name="Concluídas" />
+                                    <RechartsPie>
+                                        <Pie data={deadlineData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value" nameKey="name"
+                                            label={({ name, percent }) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`} labelLine={false} stroke="none">
+                                            {deadlineData.map((d, index) => {
+                                                const fillMatch = d.name === 'No Prazo' ? PIE_COLORS_DEADLINE[0] :
+                                                    d.name === 'Próximas (≤3 dias)' ? PIE_COLORS_DEADLINE[1] :
+                                                        d.name === 'Atrasadas' ? PIE_COLORS_DEADLINE[2] : PIE_COLORS_DEADLINE[3];
+                                                return <Cell key={`cell-${index}`} fill={fillMatch} />;
+                                            })}
+                                        </Pie>
+                                        <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)' }} itemStyle={{ color: 'var(--text-primary)' }} />
+                                    </RechartsPie>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bottom Section: Effort, Workload, Categories */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+
+                        {/* 4. Effort by Member */}
+                        <div className="chart-container" style={{ borderRadius: 12 }}>
+                            <h2 style={{ fontSize: 16 }} title="Soma do grau de dificuldade (1-5) das tarefas de cada membro.">Esforço Real por Membro (Soma de Dificuldade)</h2>
+                            <div style={{ height: 300 }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={effortByMemberData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.05)" />
+                                        <XAxis type="number" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                                        <YAxis dataKey="name" type="category" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                                        <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)' }} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
+                                        <Bar dataKey="amount" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Pontos de Esforço" />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
+
+                        {/* 3. Workload by Client */}
                         <div className="chart-container" style={{ borderRadius: 12 }}>
-                            <h2>Distribuição por Categoria</h2>
+                            <h2 style={{ fontSize: 16 }}>Carga de Trabalho por Cliente (Top 10)</h2>
+                            <div style={{ height: 300 }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={workloadByClientData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.05)" />
+                                        <XAxis type="number" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                                        <YAxis dataKey="name" type="category" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} width={100} />
+                                        <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)' }} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
+                                        <Bar dataKey="amount" fill="#3B82F6" radius={[0, 4, 4, 0]} name="Qtd. Tarefas Pendentes" />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Distribution by Category */}
+                        <div className="chart-container" style={{ borderRadius: 12 }}>
+                            <h2 style={{ fontSize: 16 }}>Distribuição por Categoria (Ativas)</h2>
                             <div style={{ height: 300 }}>
                                 <ResponsiveContainer width="100%" height="100%">
                                     <RechartsPie>
@@ -500,34 +635,7 @@ export default function OperacionalPage() {
                                 </ResponsiveContainer>
                             </div>
                         </div>
-                        <div className="chart-container" style={{ borderRadius: 12 }}>
-                            <h2>Desempenho por Membro</h2>
-                            <div style={{ height: 300 }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={memberPerfData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                                        <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-                                        <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)' }} />
-                                        <Bar dataKey="amount" fill="#3B82F6" radius={[4, 4, 0, 0]} name="Concluídas" />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                        <div className="chart-container" style={{ borderRadius: 12 }}>
-                            <h2>Pendentes por Responsável</h2>
-                            <div style={{ height: 300 }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={pendingByMemberData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                                        <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-                                        <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)' }} />
-                                        <Bar dataKey="amount" fill="#F59E0B" radius={[4, 4, 0, 0]} name="Pendentes" />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
+
                     </div>
                 </div>
             )}

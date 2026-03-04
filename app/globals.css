@@ -3414,6 +3414,10 @@ textarea.form-input:focus {
   box-shadow: -3px 0 0 0 var(--accent);
 }
 
+.template-site-card.is-admin:hover {
+  padding-right: 76px;
+}
+
 .template-site-favicon {
   width: 32px;
   height: 32px;

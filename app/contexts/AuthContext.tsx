@@ -123,11 +123,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 loadProfile(session.user.id);
             } else {
                 setUser(null);
+                if (!loading) router.replace('/login');
             }
         });
 
         return () => subscription.unsubscribe();
-    }, [loadProfile]);
+    }, [loadProfile, router, loading]);
 
     const signOut = useCallback(async () => {
         await supabase.auth.signOut();

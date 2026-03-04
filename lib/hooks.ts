@@ -137,6 +137,26 @@ export async function updateUsuario(
     return { success: true, user: data as UsuarioDB };
 }
 
+export async function uploadAvatar(file: File, userId: string): Promise<{ success: boolean; url?: string; error?: string }> {
+    try {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${userId}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('avatars')
+            .upload(filePath, file, { cacheControl: '3600', upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+        return { success: true, url: data.publicUrl };
+    } catch (error: any) {
+        console.error('Error uploading avatar:', error);
+        return { success: false, error: error.message || 'Error uploading file' };
+    }
+}
+
 export async function deleteUsuarioViaEdge(userId: string): Promise<{ success: boolean; error?: string }> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, error: 'Sessão expirada. Faça login novamente.' };
@@ -410,9 +430,30 @@ export async function sendMensagem(payload: {
 }
 
 export async function deleteMensagem(id: string) {
+    // 1. Fetch to see if it has a file
+    const { data: msg } = await supabase
+        .from('mensagens')
+        .select('arquivo_url')
+        .eq('id', id)
+        .single();
+
+    // 2. Delete from Storage if needed
+    if (msg?.arquivo_url) {
+        try {
+            const urlObj = new URL(msg.arquivo_url);
+            const pathParts = urlObj.pathname.split('/chat-files/');
+            if (pathParts.length > 1) {
+                const filePath = pathParts[1];
+                await supabase.storage.from('chat-files').remove([filePath]);
+            }
+        } catch (e) {
+            console.error("Error deleting file from storage:", e);
+        }
+    }
+
     const { error } = await supabase
         .from('mensagens')
-        .update({ deletada: true, conteudo: null, arquivo_url: null, arquivo_nome: null })
+        .update({ deletada: true, conteudo: null, arquivo_url: null, arquivo_nome: null, arquivo_tamanho: null })
         .eq('id', id);
     return { success: !error, error: error?.message };
 }

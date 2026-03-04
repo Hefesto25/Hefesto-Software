@@ -389,11 +389,18 @@ export default function TemplatesPage() {
                                             href={site.url}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="template-site-card"
+                                            className={`template-site-card ${isAdmin ? 'is-admin' : ''}`}
                                             onClick={e => e.stopPropagation()}
                                         >
                                             <img
-                                                src={`https://www.google.com/s2/favicons?domain=${new URL(site.url).hostname}&sz=32`}
+                                                src={(() => {
+                                                    try {
+                                                        const urlObj = new URL(site.url.includes('://') ? site.url : `https://${site.url}`);
+                                                        return `https://www.google.com/s2/favicons?domain=${urlObj.hostname}&sz=32`;
+                                                    } catch {
+                                                        return 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236B7280"><circle cx="12" cy="12" r="10"/></svg>';
+                                                    }
+                                                })()}
                                                 alt=""
                                                 className="template-site-favicon"
                                                 onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236B7280"><circle cx="12" cy="12" r="10"/></svg>'; }}

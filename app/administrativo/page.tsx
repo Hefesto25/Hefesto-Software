@@ -68,9 +68,9 @@ export default function AdministrativoPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Filter users for Administrativa module: Administrativa + Admin Geral
+    // Filter users for Administrativa module: Admin Geral or has access to /administrativo
     const filteredAdmUsuarios = useMemo(() =>
-        allUsuarios.filter(u => u.categoria === 'Administrativa' || u.categoria === 'Admin Geral'),
+        allUsuarios.filter(u => u.categoria === 'Admin Geral' || (u.modulos_acesso && u.modulos_acesso.includes('/administrativo'))),
         [allUsuarios]
     );
 
@@ -80,6 +80,8 @@ export default function AdministrativoPage() {
             return () => clearTimeout(timer);
         }
     }, [toast]);
+
+    const [confirmDeleteHistory, setConfirmDeleteHistory] = useState<{ isOpen: boolean, targetId: string | 'all', type: 'demanda' | 'reuniao' | 'all', title: string } | null>(null);
 
     // Auto-open demand if task_id is in URL (from Chat Mention)
     useEffect(() => {
@@ -358,51 +360,79 @@ export default function AdministrativoPage() {
                 </button>
             </div>
 
+            {/* Delete Confirm Modal Geral Administrativo */}
+            {confirmDeleteHistory && confirmDeleteHistory.isOpen && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: 400 }}>
+                        <h3>Confirmar Exclusão</h3>
+                        <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>
+                            {confirmDeleteHistory.type === 'all'
+                                ? 'Tem certeza que deseja limpar TODO o histórico? Esta ação não pode ser desfeita.'
+                                : `Tem certeza que deseja excluir este ${confirmDeleteHistory.title}? Esta ação não pode ser desfeita.`}
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                            <button className="btn btn-secondary" onClick={() => setConfirmDeleteHistory(null)}>Cancelar</button>
+                            <button className="btn btn-primary" style={{ background: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={async () => {
+                                try {
+                                    if (confirmDeleteHistory.type === 'all') {
+                                        if (historyFilter === 'demandas') {
+                                            const items = demandsData.filter(d => d.status === 'Finalizado');
+                                            for (const it of items) await removeAdminDemand(it.id);
+                                            refetchDemands();
+                                        } else {
+                                            const items = meetingsData.filter(m => m.status !== 'Agendada');
+                                            for (const it of items) await removeAdminMeeting(it.id);
+                                            refetchMeetings();
+                                        }
+                                        setToast({ message: 'Histórico limpo com sucesso.', type: 'success' });
+                                    } else if (confirmDeleteHistory.type === 'demanda') {
+                                        await removeAdminDemand(confirmDeleteHistory.targetId);
+                                        refetchDemands();
+                                        setToast({ message: 'Registro excluído.', type: 'success' });
+                                    } else if (confirmDeleteHistory.type === 'reuniao') {
+                                        const m = meetingsData.find(x => x.id === confirmDeleteHistory.targetId);
+                                        await removeAdminMeeting(confirmDeleteHistory.targetId);
+                                        if (m) await syncToCalendar(m, true);
+                                        refetchMeetings();
+                                        setToast({ message: 'Registro excluído.', type: 'success' });
+                                    }
+                                } catch (e) {
+                                    setToast({ message: 'Erro ao excluir.', type: 'error' });
+                                }
+                                setConfirmDeleteHistory(null);
+                            }}>Confirmar Exclusão</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* DASHBOARD TAB */}
             {
                 activeTab === 'painel' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
-                            <div className="kpi-card">
-                                <div className="kpi-card-header">
-                                    <div className="kpi-card-icon blue"><Clock size={16} /></div>
-                                    <span className="kpi-card-label">Demandas Abertas</span>
-                                </div>
-                                <div className="kpi-card-value">{stats.opened}</div>
+                        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 24 }}>
+                            <div className="kpi-card" style={{ borderBottom: '3px solid #3B82F6' }}>
+                                <div className="kpi-card-value" style={{ color: '#3B82F6', fontSize: 24 }}>{stats.opened}</div>
+                                <div className="kpi-card-label">Demandas Abertas</div>
                             </div>
-                            <div className="kpi-card">
-                                <div className="kpi-card-header">
-                                    <div className="kpi-card-icon green"><CheckCircle2 size={16} /></div>
-                                    <span className="kpi-card-label">Concluídas (Total)</span>
-                                </div>
-                                <div className="kpi-card-value">{stats.finished}</div>
+                            <div className="kpi-card" style={{ borderBottom: '3px solid #10B981' }}>
+                                <div className="kpi-card-value" style={{ color: '#10B981', fontSize: 24 }}>{stats.finished}</div>
+                                <div className="kpi-card-label">Concluídas (Total)</div>
                             </div>
-                            <div className="kpi-card">
-                                <div className="kpi-card-header">
-                                    <div className="kpi-card-icon amber"><Activity size={16} /></div>
-                                    <span className="kpi-card-label">Taxa de Conclusão</span>
-                                </div>
-                                <div className="kpi-card-value">{stats.rate}%</div>
+                            <div className="kpi-card" style={{ borderBottom: '3px solid #F59E0B' }}>
+                                <div className="kpi-card-value" style={{ color: '#F59E0B', fontSize: 24 }}>{stats.rate}%</div>
+                                <div className="kpi-card-label">Taxa de Conclusão</div>
                             </div>
-                            <div className="kpi-card">
-                                <div className="kpi-card-header">
-                                    <div className="kpi-card-icon red"><Calendar size={16} /></div>
-                                    <span className="kpi-card-label">Reuniões esta semana</span>
-                                </div>
-                                <div className="kpi-card-value">{stats.weekMeetings}</div>
+                            <div className="kpi-card" style={{ borderBottom: '3px solid #EF4444' }}>
+                                <div className="kpi-card-value" style={{ color: '#EF4444', fontSize: 24 }}>{stats.weekMeetings}</div>
+                                <div className="kpi-card-label">Reuniões esta semana</div>
                             </div>
-                            <div className="kpi-card" style={{ gridColumn: 'span 1' }}>
-                                <div className="kpi-card-header">
-                                    <div className="kpi-card-icon blue"><Calendar size={16} /></div>
-                                    <span className="kpi-card-label">Próximo Compromisso</span>
+                            <div className="kpi-card" style={{ borderBottom: '3px solid #8B5CF6' }}>
+                                <div className="kpi-card-value" style={{ color: '#8B5CF6', fontSize: 16, marginTop: 4, minHeight: 28 }}>
+                                    {stats.upcoming ? stats.upcoming.titulo : 'Nenhuma'}
                                 </div>
-                                <div style={{ marginTop: 8 }}>
-                                    {stats.upcoming ? (
-                                        <>
-                                            <div style={{ fontSize: 13, fontWeight: 600 }}>{stats.upcoming.titulo}</div>
-                                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(stats.upcoming.data_hora!).toLocaleString('pt-br')}</div>
-                                        </>
-                                    ) : <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Nenhum agendado</div>}
+                                <div className="kpi-card-label">
+                                    {stats.upcoming ? new Date(stats.upcoming.data_hora!).toLocaleString('pt-br', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Próximo Compromisso'}
                                 </div>
                             </div>
                         </div>
@@ -637,23 +667,8 @@ export default function AdministrativoPage() {
                                 <button className={`btn ${historyFilter === 'demandas' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setHistoryFilter('demandas')}>Demandas Finalizadas</button>
                                 <button className={`btn ${historyFilter === 'reunioes' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setHistoryFilter('reunioes')}>Reuniões Realizadas/Canceladas</button>
                             </div>
-                            <button className="btn btn-secondary" style={{ color: '#EF4444', borderColor: '#EF4444' }} onClick={async () => {
-                                if (confirm('Tem certeza que deseja limpar TODO o histórico? Esta ação não pode ser desfeita.')) {
-                                    try {
-                                        if (historyFilter === 'demandas') {
-                                            const items = demandsData.filter(d => d.status === 'Finalizado');
-                                            for (const it of items) await removeAdminDemand(it.id);
-                                            refetchDemands();
-                                        } else {
-                                            const items = meetingsData.filter(m => m.status !== 'Agendada');
-                                            for (const it of items) await removeAdminMeeting(it.id);
-                                            refetchMeetings();
-                                        }
-                                        setToast({ message: 'Histórico limpo com sucesso.', type: 'success' });
-                                    } catch (e) {
-                                        setToast({ message: 'Erro ao limpar histórico.', type: 'error' });
-                                    }
-                                }
+                            <button className="btn btn-secondary" style={{ color: '#EF4444', borderColor: '#EF4444' }} onClick={() => {
+                                setConfirmDeleteHistory({ isOpen: true, targetId: 'all', type: 'all', title: historyFilter === 'demandas' ? 'TODO o histórico de demandas' : 'TODO o histórico de reuniões' });
                             }}>
                                 Limpar Histórico
                             </button>
@@ -683,12 +698,8 @@ export default function AdministrativoPage() {
                                                 <td>{d.created_at ? new Date(d.created_at).toLocaleDateString('pt-br') : '-'}</td>
                                                 <td>{d.data_conclusao ? formatLocalSystemDate(d.data_conclusao) : '-'}</td>
                                                 <td style={{ textAlign: 'right' }}>
-                                                    <button className="header-action-btn" style={{ color: '#EF4444', padding: 4 }} onClick={async () => {
-                                                        if (confirm('Deseja apagar este registro do histórico?')) {
-                                                            await removeAdminDemand(d.id);
-                                                            refetchDemands();
-                                                            setToast({ message: 'Registro excluído.', type: 'success' });
-                                                        }
+                                                    <button className="header-action-btn" style={{ color: '#EF4444', padding: 4 }} onClick={() => {
+                                                        setConfirmDeleteHistory({ isOpen: true, targetId: d.id, type: 'demanda', title: 'Registro do histórico' });
                                                     }}>✕</button>
                                                 </td>
                                             </tr>
@@ -726,13 +737,8 @@ export default function AdministrativoPage() {
                                                 </td>
                                                 <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.pauta || '-'}</td>
                                                 <td style={{ textAlign: 'right' }}>
-                                                    <button className="header-action-btn" style={{ color: '#EF4444', padding: 4 }} onClick={async () => {
-                                                        if (confirm('Deseja apagar este registro do histórico?')) {
-                                                            await removeAdminMeeting(m.id);
-                                                            await syncToCalendar(m, true);
-                                                            refetchMeetings();
-                                                            setToast({ message: 'Registro excluído.', type: 'success' });
-                                                        }
+                                                    <button className="header-action-btn" style={{ color: '#EF4444', padding: 4 }} onClick={() => {
+                                                        setConfirmDeleteHistory({ isOpen: true, targetId: m.id, type: 'reuniao', title: 'Registro do histórico' });
                                                     }}>✕</button>
                                                 </td>
                                             </tr>

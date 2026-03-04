@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Shield, User, Users, Percent, Target, Eye, X, Check, Briefcase, Bell, Mail, Calendar, ChevronDown, Sparkles, AlertTriangle } from 'lucide-react';
 import {
-    useUsuarios, createUsuarioViaSignUp, updateUsuario, deleteUsuarioViaEdge,
+    useUsuarios, createUsuarioViaSignUp, updateUsuario, deleteUsuarioViaEdge, uploadAvatar,
     useFinancialTypes, useFinancialCategories,
     addFinancialType, removeFinancialType,
     addFinancialCategory, removeFinancialCategory,
@@ -102,6 +102,8 @@ export default function ConfiguracoesPage() {
     const [editModules, setEditModules] = useState<string[]>([]);
     const [editPermDiretorioClientes, setEditPermDiretorioClientes] = useState(false);
     const [editPermDiretorioColab, setEditPermDiretorioColab] = useState<'nenhuma' | 'basico' | 'sensivel'>('nenhuma');
+    const [editAvatarFile, setEditAvatarFile] = useState<File | null>(null);
+    const [editAvatarPreview, setEditAvatarPreview] = useState<string | null>(null);
 
     // Comercial Team details
     const [selectedComercialUser, setSelectedComercialUser] = useState('');
@@ -173,6 +175,8 @@ export default function ConfiguracoesPage() {
         setEditModules(usuario.modulos_acesso || []);
         setEditPermDiretorioClientes(usuario.permissao_diretorio_clientes || false);
         setEditPermDiretorioColab(usuario.permissao_diretorio_colaboradores || 'nenhuma');
+        setEditAvatarFile(null);
+        setEditAvatarPreview(usuario.foto_url || null);
         setFormError(null);
         setModal({ type: 'edit', usuario });
     }
@@ -247,6 +251,17 @@ export default function ConfiguracoesPage() {
                 updates.permissao_diretorio_colaboradores = editPermDiretorioColab;
             }
             // Non-admin self-edit: only nome is sent (RLS protects the rest)
+
+            if (editAvatarFile) {
+                const uploadRes = await uploadAvatar(editAvatarFile, modal.usuario.id);
+                if (uploadRes.success && uploadRes.url) {
+                    updates.foto_url = uploadRes.url;
+                } else {
+                    setFormError(uploadRes.error || 'Erro ao enviar a foto de perfil. Tente novamente.');
+                    setSaving(false);
+                    return;
+                }
+            }
 
             const result = await updateUsuario(modal.usuario.id, updates as Partial<UsuarioDB>);
 
@@ -585,6 +600,29 @@ export default function ConfiguracoesPage() {
                                         </button>
                                     </div>
                                     <div className="settings-modal-body">
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 20 }}>
+                                            <div style={{ position: 'relative', width: 72, height: 72, borderRadius: '50%', backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 8, border: '2px solid var(--border-default)' }}>
+                                                {editAvatarPreview ? (
+                                                    <img src={editAvatarPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                ) : (
+                                                    <div style={{ color: 'var(--text-muted)', fontSize: 24, fontWeight: 700 }}>
+                                                        {getInitials(editName)}
+                                                    </div>
+                                                )}
+                                                <label style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 24, background: 'rgba(0,0,0,0.6)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 10, fontWeight: 600, transition: 'background 0.2s', ...({ ':hover': { background: 'rgba(0,0,0,0.8)' } } as any) }}>
+                                                    TROC
+                                                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) {
+                                                            setEditAvatarFile(file);
+                                                            setEditAvatarPreview(URL.createObjectURL(file));
+                                                        }
+                                                    }} />
+                                                </label>
+                                            </div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Tamanho máx: 2MB</div>
+                                        </div>
+
                                         <div className="form-group" style={{ marginBottom: 14 }}>
                                             <label className="form-label">Nome Completo</label>
                                             <input className="form-input" type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Nome completo" />

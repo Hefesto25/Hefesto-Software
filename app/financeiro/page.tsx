@@ -121,6 +121,9 @@ export default function FinanceiroPage() {
     const [taxValorDisplay, setTaxValorDisplay] = useState('');
     const [taxStatus, setTaxStatus] = useState<string>('Pendente');
 
+    // Generic Delete Confirm State
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean, targetId: string, type: 'tax' | 'transaction' | 'goal' | 'budget', title: string } | null>(null);
+
     function openAddTax() {
         setTaxDescricao('');
         setTaxCategoria('');
@@ -172,10 +175,14 @@ export default function FinanceiroPage() {
     }
 
     async function handleDeleteTax(id: string) {
-        if (!confirm('Tem certeza que deseja excluir este imposto?')) return;
+        setDeleteConfirm({ isOpen: true, targetId: id, type: 'tax', title: 'Excluir Imposto' });
+    }
+
+    async function processDeleteTax(id: string) {
         try {
             await removeFinancialTax(id);
             refetchTaxes();
+            setDeleteConfirm(null);
         } catch (e) { console.error(e); }
     }
 
@@ -294,9 +301,14 @@ export default function FinanceiroPage() {
     }
 
     async function handleDeleteTransaction(id: string) {
+        setDeleteConfirm({ isOpen: true, targetId: id, type: 'transaction', title: 'Excluir Lançamento' });
+    }
+
+    async function processDeleteTransaction(id: string) {
         try {
             await removeFinancialTransaction(id);
             setTransactionsData(transactionsData.filter(item => item.id !== id));
+            setDeleteConfirm(null);
         } catch (e) { console.error(e); }
     }
 
@@ -360,6 +372,23 @@ export default function FinanceiroPage() {
                     </button>
                 ))}
             </div>
+
+            {/* Delete Confirm Modal Global */}
+            {deleteConfirm && deleteConfirm.isOpen && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: 400 }}>
+                        <h3>Confirmar Exclusão</h3>
+                        <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>Tem certeza que deseja excluir <b>{deleteConfirm.title}</b>? Esta ação não pode ser desfeita.</p>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancelar</button>
+                            <button className="btn btn-primary" style={{ background: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => {
+                                if (deleteConfirm.type === 'tax') processDeleteTax(deleteConfirm.targetId);
+                                if (deleteConfirm.type === 'transaction') processDeleteTransaction(deleteConfirm.targetId);
+                            }}>Confirmar Exclusão</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ====== ABA PAINEL ====== */}
             {activeTab === 'painel' && (() => {
@@ -1432,6 +1461,9 @@ function MetasPlanejamentoTab({
     const [newBudgetMonth, setNewBudgetMonth] = useState('');
     const [newBudgetValue, setNewBudgetValue] = useState('');
 
+    // Delete confirmation state
+    const [deleteConfirmPlan, setDeleteConfirmPlan] = useState<{ isOpen: boolean, targetId: string, type: 'goal' | 'budget', title: string } | null>(null);
+
     const uniqueCategories = Array.from(new Set(budgetPlan.map(b => b.category))).sort();
     const uniqueMonths = Array.from(new Set(budgetPlan.map(b => b.month))).sort();
 
@@ -1475,8 +1507,12 @@ function MetasPlanejamentoTab({
     }
 
     async function handleDeleteGoal(id: string) {
+        setDeleteConfirmPlan({ isOpen: true, targetId: id, type: 'goal', title: 'Excluir Meta' });
+    }
+
+    async function processDeleteGoal(id: string) {
         setSaving(true);
-        try { await removeGoal(id); setGoals(goals.filter(g => g.id !== id)); } catch (e) { console.error(e); }
+        try { await removeGoal(id); setGoals(goals.filter(g => g.id !== id)); setDeleteConfirmPlan(null); } catch (e) { console.error(e); }
         setSaving(false);
     }
 
@@ -1492,17 +1528,38 @@ function MetasPlanejamentoTab({
     }
 
     async function handleDeleteBudgetCategory(category: string) {
+        setDeleteConfirmPlan({ isOpen: true, targetId: category, type: 'budget', title: `Orçamento de ${category}` });
+    }
+
+    async function processDeleteBudgetCategory(category: string) {
         setSaving(true);
         try {
             const items = budgetPlan.filter(b => b.category === category);
             for (const item of items) await removeBudgetPlanItem(item.id);
             setBudgetPlan(budgetPlan.filter(b => b.category !== category));
+            setDeleteConfirmPlan(null);
         } catch (e) { console.error(e); }
         setSaving(false);
     }
 
     return (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {/* Delete Confirm Modal Planejamento */}
+            {deleteConfirmPlan && deleteConfirmPlan.isOpen && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ maxWidth: 400 }}>
+                        <h3>Confirmar Exclusão</h3>
+                        <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>Tem certeza que deseja excluir <b>{deleteConfirmPlan.title}</b>? Esta ação não pode ser desfeita.</p>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                            <button className="btn btn-secondary" onClick={() => setDeleteConfirmPlan(null)}>Cancelar</button>
+                            <button className="btn btn-primary" style={{ background: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => {
+                                if (deleteConfirmPlan.type === 'goal') processDeleteGoal(deleteConfirmPlan.targetId);
+                                if (deleteConfirmPlan.type === 'budget') processDeleteBudgetCategory(deleteConfirmPlan.targetId);
+                            }}>Confirmar Exclusão</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* ===== METAS TABLE ===== */}
             <div className="table-card">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -1660,7 +1717,7 @@ function MetasPlanejamentoTab({
                     </tbody>
                 </table>
             </div>
-        </>
+        </div>
     );
 }
 

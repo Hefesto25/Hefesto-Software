@@ -106,10 +106,10 @@ export default function ComercialPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Filter users for Comercial: Comercial + Admin Geral
+    // Filter users for Comercial: Admin Geral or has access to /comercial
     const filteredComUsuarios = useMemo(() =>
-        teamMembers.filter(u => u.categoria === 'Comercial' || u.categoria === 'Admin Geral'),
-        [teamMembers]
+        allUsuarios.filter(u => u.categoria === 'Admin Geral' || (u.modulos_acesso && u.modulos_acesso.includes('/comercial'))),
+        [allUsuarios]
     );
 
     const [showClientModal, setShowClientModal] = useState(false);
@@ -158,6 +158,8 @@ export default function ComercialPage() {
     const [anualValue, setAnualValue] = useState<string>('');
     const [showLostModal, setShowLostModal] = useState<{ isOpen: boolean, dealId: string | null }>({ isOpen: false, dealId: null });
     const [lostReason, setLostReason] = useState('');
+    const [showWonModal, setShowWonModal] = useState<{ isOpen: boolean, dealId: string | null }>({ isOpen: false, dealId: null });
+    const [wonParticipantes, setWonParticipantes] = useState<string[]>([]);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     // Deal Modal State
@@ -936,6 +938,12 @@ export default function ComercialPage() {
                             return; // Wait for modal to complete the backend update
                         }
 
+                        if (stageId === 'fechado' && oldStage !== 'fechado') {
+                            setShowWonModal({ isOpen: true, dealId });
+                            setDealsData(deals); // Revert UI
+                            return; // Wait for the user to pick participants and confirm
+                        }
+
                         await updateDeal(deal.id, { stage: stageId, data_entrada_etapa: updatedDeal.data_entrada_etapa });
 
                         // --- GATILHOS OPERACIONAIS --- //
@@ -949,24 +957,6 @@ export default function ComercialPage() {
                                 cliente_nome: deal.company
                             });
                             showToast(`Tarefa criada no Operacional: Realizar Prévia para ${deal.company}`);
-                        } else if (oldStage === 'proposta_comercial' && stageId === 'fechado') {
-                            await addOperationalTask({
-                                titulo: `Finalizar Ferramenta — ${deal.company}`,
-                                tipo: 'finalizar_ferramenta',
-                                status: 'A Fazer',
-                                origem: 'comercial_automatico',
-                                negocio_id: deal.id,
-                                cliente_nome: deal.company
-                            });
-                            await addOperationalTask({
-                                titulo: `Implementação — ${deal.company}`,
-                                tipo: 'implementacao',
-                                status: 'A Fazer',
-                                origem: 'comercial_automatico',
-                                negocio_id: deal.id,
-                                cliente_nome: deal.company
-                            });
-                            showToast(`2 tarefas criadas no Operacional para ${deal.company}`);
                         }
                     } catch (e) {
                         console.error('Erro ao atualizar etapa:', e);
@@ -1181,6 +1171,81 @@ export default function ComercialPage() {
                                                 showToast('Erro ao atualizar.');
                                             }
                                         }}>Confirmar Perda</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modal Ganho (Fechado) - Seleção de Participantes */}
+                        {showWonModal.isOpen && (
+                            <div className="modal-overlay">
+                                <div className="modal-content" style={{ maxWidth: 450 }}>
+                                    <h3>Negócio Fechado (Win!) 🎉</h3>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
+                                        Selecione os participantes operacionais para a <b>Finalização da Ferramenta</b> e <b>Implementação</b>.
+                                    </p>
+                                    <div className="form-group" style={{ marginTop: 16 }}>
+                                        <label>Participantes da Operação:</label>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8, maxHeight: 200, overflowY: 'auto' }}>
+                                            {teamMembers.map(m => (
+                                                <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={wonParticipantes.includes(m.id)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) setWonParticipantes([...wonParticipantes, m.id]);
+                                                            else setWonParticipantes(wonParticipantes.filter(id => id !== m.id));
+                                                        }}
+                                                    />
+                                                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: m.foto_url || AVATAR_COLORS[m.nome.charCodeAt(0) % AVATAR_COLORS.length] }}></div>
+                                                    {m.nome} ({m.categoria})
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                                        <button className="btn btn-secondary" onClick={() => {
+                                            setShowWonModal({ isOpen: false, dealId: null });
+                                            setWonParticipantes([]);
+                                        }}>Cancelar</button>
+                                        <button className="btn btn-primary" style={{ background: 'var(--success)', borderColor: 'var(--success)' }} onClick={async () => {
+                                            try {
+                                                const d = deals.find(x => x.id === showWonModal.dealId);
+                                                if (!d) return;
+
+                                                await updateDeal(showWonModal.dealId as string, {
+                                                    stage: 'fechado',
+                                                    data_entrada_etapa: new Date().toISOString()
+                                                });
+
+                                                // --- GATILHOS OPERACIONAIS --- //
+                                                await addOperationalTask({
+                                                    titulo: `Finalizar Ferramenta — ${d.company}`,
+                                                    tipo: 'finalizar_ferramenta',
+                                                    status: 'A Fazer',
+                                                    origem: 'comercial_automatico',
+                                                    negocio_id: d.id,
+                                                    cliente_nome: d.company,
+                                                    participantes_ids: wonParticipantes
+                                                });
+                                                await addOperationalTask({
+                                                    titulo: `Implementação — ${d.company}`,
+                                                    tipo: 'implementacao',
+                                                    status: 'A Fazer',
+                                                    origem: 'comercial_automatico',
+                                                    negocio_id: d.id,
+                                                    cliente_nome: d.company,
+                                                    participantes_ids: wonParticipantes
+                                                });
+
+                                                setShowWonModal({ isOpen: false, dealId: null });
+                                                setWonParticipantes([]);
+                                                showToast(`Negócio Fechado! 2 tarefas criadas no Operacional para ${d.company}.`);
+                                            } catch (e) {
+                                                console.error(e);
+                                                showToast('Erro ao fechar negócio.');
+                                            }
+                                        }}>Confirmar e Gerar Tarefas</button>
                                     </div>
                                 </div>
                             </div>
