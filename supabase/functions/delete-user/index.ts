@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
 
         if (profileError) {
             return new Response(
-                JSON.stringify({ error: `Erro ao remover perfil: ${profileError.message}` }),
+                JSON.stringify({ error: `Erro ao remover perfil: ${profileError.message}`, details: profileError }),
                 { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
         }

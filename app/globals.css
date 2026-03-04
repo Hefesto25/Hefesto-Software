@@ -3415,7 +3415,7 @@ textarea.form-input:focus {
 }
 
 .template-site-card.is-admin:hover {
-  padding-right: 76px;
+  padding-right: 90px;
 }
 
 .template-site-favicon {
@@ -3465,17 +3465,19 @@ textarea.form-input:focus {
 
 .template-site-admin {
   position: absolute;
-  top: 8px;
+  top: 50%;
   right: 12px;
+  transform: translateY(-50%);
   display: flex;
-  gap: 6px;
+  gap: 4px;
   opacity: 0;
-  transition: opacity 0.2s;
-  background: rgba(0, 0, 0, 0.6);
+  transition: opacity 0.2s ease;
+  background: rgba(20, 20, 20, 0.85);
   backdrop-filter: blur(8px);
-  padding: 4px 8px;
+  padding: 6px 10px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 2;
 }
 
 .template-site-card:hover .template-site-admin {
@@ -3485,17 +3487,19 @@ textarea.form-input:focus {
 .template-site-admin button {
   background: transparent;
   border: none;
-  padding: 4px;
-  color: var(--text-muted);
+  padding: 6px;
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 6px;
 }
 
 .template-site-admin button:hover {
   color: var(--accent);
+  background: rgba(255, 255, 255, 0.08);
   transform: scale(1.1);
 }
 

@@ -287,7 +287,7 @@ export default function ConfiguracoesPage() {
         try {
             const result = await deleteUsuarioViaEdge(modal.usuario.id);
             if (!result.success) {
-                alert(result.error || 'Erro ao remover usuário.');
+                alert(result.error + (result.details ? '\n' + JSON.stringify(result.details) : '') + '\nErro ao remover usuário.');
                 setSaving(false);
                 return;
             }

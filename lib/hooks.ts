@@ -157,23 +157,25 @@ export async function uploadAvatar(file: File, userId: string): Promise<{ succes
     }
 }
 
-export async function deleteUsuarioViaEdge(userId: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteUsuarioViaEdge(userId: string): Promise<{ success: boolean; error?: string; details?: any }> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, error: 'Sessão expirada. Faça login novamente.' };
 
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-user`, {
-        method: 'POST',
+    const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { user_id: userId },
         headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ user_id: userId }),
+            Authorization: `Bearer ${session.access_token}`
+        }
     });
 
-    const data = await res.json();
-    if (!res.ok || data.error) {
-        return { success: false, error: data.error || 'Erro desconhecido ao remover usuário.' };
+    if (error) {
+        return { success: false, error: error.message || 'Erro desconhecido ao remover usuário.', details: error };
     }
+
+    if (data?.error) {
+        return { success: false, error: data.error, details: data };
+    }
+
     return { success: true };
 }
 
