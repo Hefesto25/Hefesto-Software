@@ -268,7 +268,7 @@ export default function ComercialPage() {
             return showToast('Preencha os campos obrigatórios (Empresa, Valor e Responsável).');
         }
 
-        const selectedMember = teamMembers.find(m => m.id === newDealAssignee);
+        const selectedMember = teamMembers.find(m => m.nome === newDealAssignee);
         if (!selectedMember) return showToast('Responsável inválido.');
 
         try {
