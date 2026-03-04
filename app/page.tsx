@@ -310,6 +310,17 @@ export default function DashboardPage() {
             <div className="kpi-card-value" title={`${productivity}%`}>{productivity}%</div>
             <div className="kpi-card-label">Produtividade</div>
           </div>
+          <div className="kpi-card cursor-pointer"
+            style={{ flex: '1 1 200px', cursor: 'pointer', borderBottom: '3px solid #EF4444' }}
+            onClick={() => window.location.href = '/operacional'}>
+            <div className="kpi-card-header">
+              <div className="kpi-card-icon" style={{ color: '#EF4444' }}><Clock size={20} /></div>
+            </div>
+            <div className="kpi-card-value" style={{ color: '#EF4444' }}>Atrasadas</div>
+            <div className="kpi-card-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Ver no Operacional <span style={{ fontSize: 16 }}>&rarr;</span>
+            </div>
+          </div>
         </div>
       </SortableWidget>
     ),

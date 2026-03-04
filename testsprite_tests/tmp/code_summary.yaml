@@ -1,0 +1,109 @@
+version: "2"
+type: frontend
+tech_stack:
+  - TypeScript
+  - Next.js
+  - React
+  - Supabase
+routes:
+  - path: /
+    file: app/page.tsx
+    auth_required: true
+    description: Main dashboard with KPIs and charts
+  - path: /comercial
+    file: app/comercial/page.tsx
+    auth_required: true
+    description: CRM and Commercial kanban board
+  - path: /financeiro
+    file: app/financeiro/page.tsx
+    auth_required: true
+    description: Financial management, transactions, and taxes
+  - path: /operacional
+    file: app/operacional/page.tsx
+    auth_required: true
+    description: Operational task management kanban
+  - path: /administrativo
+    file: app/administrativo/page.tsx
+    auth_required: true
+    description: Administrative demands and meeting history
+  - path: /calendario
+    file: app/calendario/page.tsx
+    auth_required: true
+    description: System-wide calendar for events and tasks
+  - path: /chat
+    file: app/chat/page.tsx
+    auth_required: true
+    description: Internal chat messaging system
+  - path: /notificacoes
+    file: app/notificacoes/page.tsx
+    auth_required: true
+    description: User notification center
+  - path: /templates
+    file: app/templates/page.tsx
+    auth_required: true
+    description: Reusable templates and useful sites
+  - path: /diretorio
+    file: app/diretorio/page.tsx
+    auth_required: true
+    description: Client and collaborator directory
+  - path: /configuracoes
+    file: app/configuracoes/page.tsx
+    auth_required: true
+    description: System settings, user permissions, categories
+features:
+  - name: User Authentication
+    description: Login and session management using Supabase
+    files:
+      - app/contexts/AuthContext.tsx
+    entry_route: /
+    user_interactions:
+      - Access protected routes
+    api_calls:
+      - method: POST
+        endpoint: Supabase Auth
+    auth_required: false
+  - name: Commercial Kanban
+    description: Drag and drop kanban board for managing deals and clients
+    files:
+      - app/comercial/page.tsx
+    entry_route: /comercial
+    user_interactions:
+      - Drag deal cards across stages
+      - Create new clients and deals
+      - Assign users to deals
+    api_calls:
+      - method: POST
+        endpoint: Supabase DB
+    auth_required: true
+  - name: Cross-Module Task Assignment
+    description: Assigning operational and administrative tasks to users based on module access rather than rigid categories.
+    files:
+      - app/operacional/page.tsx
+      - app/administrativo/page.tsx
+    entry_route: /operacional
+    user_interactions:
+      - Open task creation modal
+      - Select assignees from dynamically filtered dropdown list
+      - Save new task
+    api_calls:
+      - method: POST
+        endpoint: Supabase DB
+    auth_required: true
+  - name: Custom Deletion Modals
+    description: Using custom, consistent app UI modals for deletion warning prompts instead of native browser confirm boxes.
+    files:
+      - app/financeiro/page.tsx
+      - app/administrativo/page.tsx
+    entry_route: /financeiro
+    user_interactions:
+      - Click delete button on an entity
+      - See custom in-app warning modal
+      - Confirm deletion
+    api_calls:
+      - method: DELETE
+        endpoint: Supabase DB
+    auth_required: true
+known_limitations:
+  - issue: Kanban ordering is not persisted 
+    location: app/comercial/page.tsx
+    impact: Reordering cards within the same column is not saved to the database.

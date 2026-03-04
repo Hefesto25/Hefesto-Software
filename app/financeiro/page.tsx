@@ -48,7 +48,7 @@ const MONTH_ABBR: Record<string, string> = {
 const PIE_COLORS = ['#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#06B6D4', '#A78BFA', '#F472B6'];
 
 type Tab = 'painel' | 'movimentacoes' | 'planejamento' | 'rentabilidade';
-type SubTabMovimentacoes = 'pendentes' | 'fluxo' | 'historico' | 'impostos';
+type SubTabMovimentacoes = 'pendentes' | 'fluxo' | 'historico' | 'impostos' | 'recorrencias';
 type SubTabPlanejamento = 'dre' | 'metas';
 
 export default function FinanceiroPage() {
@@ -807,7 +807,97 @@ export default function FinanceiroPage() {
                         >
                             Impostos
                         </button>
+                        <button
+                            onClick={() => setActiveSubTabMovimentacoes('recorrencias')}
+                            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s', background: activeSubTabMovimentacoes === 'recorrencias' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeSubTabMovimentacoes === 'recorrencias' ? 'var(--text-primary)' : 'var(--text-muted)' }}
+                        >
+                            Recorrências
+                        </button>
                     </div>
+
+                    {/* --- Sub-Aba Recorrências --- */}
+                    {activeSubTabMovimentacoes === 'recorrencias' && (() => {
+                        const filtered = transactionsData.filter(item => {
+                            if (!item.grupo_recorrencia) return false;
+                            const d = new Date(item.data_vencimento);
+                            const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
+                            const itemYear = String(d.getFullYear());
+                            if (filterMonth !== 'todos' && itemMonth !== filterMonth) return false;
+                            if (filterYear !== 'todos' && itemYear !== filterYear) return false;
+                            if (filterType !== 'todos' && item.tipo !== filterType) return false;
+                            if (filterClassificacao !== 'todos' && item.classificacao !== filterClassificacao) return false;
+                            return true;
+                        }).sort((a, b) => new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime());
+
+                        return (
+                            <>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
+                                    <button className="btn btn-primary" onClick={openAddTransaction} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <Plus size={16} /> Nova Movimentação
+                                    </button>
+                                </div>
+                                <div className="table-card">
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                                        <div className="table-card-title" style={{ marginBottom: 0 }}>Gestão de Recorrências</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <Filter size={14} style={{ color: 'var(--text-muted)' }} />
+                                            <select className="form-select" style={{ minWidth: 130, background: 'transparent', border: 'none', fontSize: 13 }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
+                                                <option value="todos">Mês</option>
+                                                {MONTH_ORDER.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                                            </select>
+                                            <select className="form-select" style={{ minWidth: 90, background: 'transparent', border: 'none', fontSize: 13 }} value={filterYear} onChange={e => setFilterYear(e.target.value)}>
+                                                <option value="todos">Ano</option>
+                                                {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                            </select>
+                                            <select className="form-select" style={{ minWidth: 120, background: 'transparent', border: 'none', fontSize: 13 }} value={filterType} onChange={e => setFilterType(e.target.value)}>
+                                                <option value="todos">Fluxo</option>
+                                                <option value="entrada">Entrada</option>
+                                                <option value="saida">Saída</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <table className="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Vencimento</th>
+                                                <th>Descrição</th>
+                                                <th>Classificação</th>
+                                                <th>Peridiocidade</th>
+                                                <th>Status</th>
+                                                <th>Valor</th>
+                                                <th style={{ width: 80 }}></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filtered.length === 0 && (
+                                                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>Nenhuma recorrência encontrada.</td></tr>
+                                            )}
+                                            {filtered.map(item => (
+                                                <tr key={item.id}>
+                                                    <td>{new Date(item.data_vencimento).toLocaleDateString('pt-BR')}</td>
+                                                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
+                                                    <td>{item.classificacao || '—'}</td>
+                                                    <td style={{ textTransform: 'capitalize' }}>{item.recorrencia || 'mensal'}</td>
+                                                    <td>
+                                                        <span className={`status-badge ${item.status === 'pago_recebido' ? 'success' : 'warning'}`}>
+                                                            {item.status === 'pago_recebido' ? 'Pago/Recebido' : 'Pendente'}
+                                                        </span>
+                                                    </td>
+                                                    <td className={item.tipo === 'entrada' ? 'positive' : 'negative'}>{item.tipo === 'entrada' ? '+' : '-'}{formatCurrency(Number(item.valor))}</td>
+                                                    <td>
+                                                        <div style={{ display: 'flex', gap: 4 }}>
+                                                            <button className="settings-action-btn" onClick={() => openEditTransaction(item)} title="Editar"><Pencil size={13} /></button>
+                                                            <button className="settings-action-btn danger" onClick={() => handleDeleteTransaction(item.id)} title="Excluir"><Trash2 size={13} /></button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </>
+                        );
+                    })()}
 
                     {/* --- Sub-Aba Pendentes --- */}
                     {activeSubTabMovimentacoes === 'pendentes' && (() => {

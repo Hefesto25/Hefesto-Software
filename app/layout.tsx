@@ -192,8 +192,17 @@ function AppContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Don't render if no user (middleware should redirect)
-  if (!user) return null;
+  // Don't render blank if no user (middleware should redirect, or auth context will push to login)
+  if (!user) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 36, fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}>H</div>
+          <div style={{ fontSize: 13 }}>Redirecionando...</div>
+        </div>
+      </div>
+    );
+  }
 
   // Filter nav items by user's allowed modules, but ALWAYS show Diretório
   const visibleNavItems = allNavItems.filter(item =>

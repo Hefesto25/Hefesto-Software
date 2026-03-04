@@ -108,8 +108,8 @@ export default function ComercialPage() {
 
     // Filter users for Comercial: Admin Geral or has access to /comercial
     const filteredComUsuarios = useMemo(() =>
-        allUsuarios.filter(u => u.categoria === 'Admin Geral' || (u.modulos_acesso && u.modulos_acesso.includes('/comercial'))),
-        [allUsuarios]
+        teamMembers.filter((u: any) => u.categoria === 'Admin Geral' || (u.modulos_acesso && u.modulos_acesso.includes('/comercial'))),
+        [teamMembers]
     );
 
     const [showClientModal, setShowClientModal] = useState(false);
@@ -706,8 +706,14 @@ export default function ComercialPage() {
         return { name: stage.label, count, fill: stage.color };
     });
 
-    if (loadingDeals) {
-        return <div className="p-8 text-center text-muted">Carregando dados comerciais...</div>;
+    if (loadingDeals || loadingMembers || loadingGoals) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '60vh', width: '100%' }}>
+                <div className="spinner" style={{ width: 40, height: 40, border: '4px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                <div style={{ marginTop: 16, color: 'var(--text-muted)' }}>Montando CRM...</div>
+                <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+            </div>
+        );
     }
 
     const uniqueYears = Array.from(new Set(deals.map(d => String(new Date(d.date || getBahiaDateString()).getFullYear())))).sort();

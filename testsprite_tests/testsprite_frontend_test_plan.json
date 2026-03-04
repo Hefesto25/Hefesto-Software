@@ -1,0 +1,3309 @@
+[
+  {
+    "id": "TC001",
+    "title": "Sign out ends session and protected route access requires sign-in",
+    "description": "Verifies that signing out ends the session and that attempting to access a protected module requires authentication.",
+    "category": "Authentication & Security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Sign in\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Dashboard\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Sign out\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/login\""
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /comercial"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/login\""
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Session remains active while navigating across multiple protected modules",
+    "description": "Verifies basic session persistence by navigating to multiple authenticated pages without being sent back to sign-in.",
+    "category": "Authentication & Security",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Sign in\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Dashboard\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/financeiro\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Operacional\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Global dashboard loads and shows core KPI cards",
+    "description": "Verifies the central dashboard loads after login and displays high-level KPI cards for key modules.",
+    "category": "Dashboard Central (Global Dashboard)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Sales\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Finance\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Operations\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Overdue tasks KPI is visible on the dashboard",
+    "description": "Verifies the overdue tasks KPI card is present and can be identified on the global dashboard.",
+    "category": "Dashboard Central (Global Dashboard)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Overdue\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Tasks\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Overdue tasks KPI card\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Expand overdue tasks KPI to view overdue task list",
+    "description": "Verifies clicking the overdue tasks KPI expands details and shows a list of overdue tasks.",
+    "category": "Dashboard Central (Global Dashboard)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Overdue tasks\" KPI card"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Overdue tasks\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Overdue tasks details list\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Overdue task link from expanded details navigates to Operations module",
+    "description": "Verifies selecting a task link from the overdue tasks details takes the user to the Operations (/operacional) module.",
+    "category": "Dashboard Central (Global Dashboard)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Overdue tasks\" KPI card"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Overdue tasks details list\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the first visible overdue task link in the details list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "KPI widgets show loading spinners while data is fetched",
+    "description": "Verifies the dashboard shows loading indicators for KPI widgets during slow loading.",
+    "category": "Dashboard Central (Global Dashboard)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"KPI loading spinner\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Wait for the KPI widgets to finish loading"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"KPI loading spinner\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Create a new deal and see it appear on the Comercial kanban",
+    "description": "Verifies a user can create a new deal from the Comercial page and the new deal card appears on the board.",
+    "category": "Commercial Kanban (Comercial)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Comercial\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/comercial\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Prospecting\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Comercial board shows all expected kanban columns",
+    "description": "Verifies the Comercial page loads and displays the main pipeline columns (Prospecting, Negotiation, Won, Lost).",
+    "category": "Commercial Kanban (Comercial)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Comercial\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Prospecting\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Negotiation\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Won\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Create deal flow opens modal and requires required fields (happy-path save)",
+    "description": "Verifies the create-deal modal opens, required fields can be filled, and saving closes the form and returns to the board.",
+    "category": "Commercial Kanban (Comercial)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Comercial\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Create new deal\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"New deal\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Save\" button"
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Assign a user to a deal after moving it to Negotiation",
+    "description": "Verifies that after a deal is moved to Negotiation, a user can be assigned and an assignee indicator appears on the card.",
+    "category": "Commercial Kanban (Comercial)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Comercial\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on a deal card in the \"Negotiation\" column"
+      },
+      {
+        "type": "action",
+        "description": "Select an option from the \"Assignee\" dropdown"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"assignee avatar on the deal card\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Create new client validation blocks save when required field is empty",
+    "description": "Verifies client creation shows a validation message when required data is missing and the form remains open.",
+    "category": "Commercial Kanban (Comercial)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Comercial\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Create new client\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"required\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Cancel out of create-deal modal without saving",
+    "description": "Verifies the user can dismiss the new deal form and return to the kanban without creating a card.",
+    "category": "Commercial Kanban (Comercial)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Comercial\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Create new deal\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Cancel\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Prospecting\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "Comercial page loads and displays kanban board container",
+    "description": "Verifies the Comercial route loads successfully and the primary kanban board area is visible for interaction.",
+    "category": "Commercial Kanban (Comercial)",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Comercial\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify page title contains \"Comercial\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"kanban board\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "Create a new transaction and verify it appears in the transactions list",
+    "description": "Verifies a user can create a transaction from Financeiro and see it listed afterward.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/financeiro\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Transações\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Financeiro shows transactions list and cashflow/summary KPIs on load",
+    "description": "Verifies the Financeiro landing view renders the transaction list and a cashflow/summary section.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Transações\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Fluxo de Caixa\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "Create transaction from Financeiro using minimal required fields",
+    "description": "Verifies saving a new transaction succeeds when only required fields are filled and it appears in the list.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Create Transaction\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Nova Transação\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC018",
+    "title": "Delete a transaction successfully via custom confirmation modal",
+    "description": "Verifies deleting a transaction shows an in-app warning modal and, upon confirmation, removes the transaction and shows a success message.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the delete button for a transaction in the list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Tem certeza\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC019",
+    "title": "Cancel transaction deletion from the warning modal",
+    "description": "Verifies the user can cancel from the custom delete confirmation modal and the transaction remains visible.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the delete button for a transaction in the list"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Cancel\" button in the warning modal"
+      }
+    ]
+  },
+  {
+    "id": "TC020",
+    "title": "Open Recorrências view from Financeiro",
+    "description": "Verifies the user can navigate from Financeiro to the Recorrências view and see the recurring payments list area.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Recorrências\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Recorrências\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC021",
+    "title": "Create a new recurring payment (Recorrência) and verify it appears in the list",
+    "description": "Verifies a user can create a recurring schedule and see it listed in Recorrências.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Recorrências\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Create Recorrência\" button"
+      }
+    ]
+  },
+  {
+    "id": "TC022",
+    "title": "Validate required fields on Create Recorrência form",
+    "description": "Verifies the recurring payment form blocks saving and shows a visible validation message when required fields are missing.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Recorrências\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Create Recorrência\" button"
+      }
+    ]
+  },
+  {
+    "id": "TC023",
+    "title": "Attempt to save a transaction with missing required fields and verify validation feedback",
+    "description": "Verifies the Create Transaction form prevents saving when required fields are empty and displays a visible validation message.",
+    "category": "Financial Management (Financeiro)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Financeiro\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Create Transaction\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Save\" button"
+      }
+    ]
+  },
+  {
+    "id": "TC024",
+    "title": "Open Operacional kanban and start creating a new task",
+    "description": "Verifies the Operacional page loads with kanban columns and the new task modal can be opened.",
+    "category": "Operational Task Management (Operacional)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Operacional\" in the main navigation/menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"To Do\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"New Task\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Create Task\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC025",
+    "title": "Operacional page shows all expected kanban columns",
+    "description": "Verifies the kanban board renders the standard columns for operational tasks.",
+    "category": "Operational Task Management (Operacional)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Operacional\" in the main navigation/menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"To Do\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"In Progress\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Review\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Done\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC026",
+    "title": "Create a new operational task with title, description, and assignee",
+    "description": "Verifies a task can be created and appears as a new card on the kanban board.",
+    "category": "Operational Task Management (Operacional)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Operacional\" in the main navigation/menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"New Task\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E Task - Operacional\" into the task title field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Created by automated UI test\" into the task description field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the assignees dropdown field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"a\" into the assignees search/filter field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the first assignee option in the filtered list"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"E2E Task - Operacional\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC027",
+    "title": "Validation: prevent saving a task when title is empty, then correct and save",
+    "description": "Verifies title-required validation is shown and the task can be saved after fixing the title.",
+    "category": "Operational Task Management (Operacional)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Operacional\" in the main navigation/menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"New Task\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click on the assignees dropdown field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the first assignee option in the list"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Title is required\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E Task - Title Fixed\" into the task title field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"E2E Task - Title Fixed\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC028",
+    "title": "Cancel task creation closes the modal without adding a card",
+    "description": "Verifies dismissing the creation modal does not create a new task card.",
+    "category": "Operational Task Management (Operacional)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Operacional\" in the main navigation/menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"New Task\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E Task - Should Not Save\" into the task title field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Cancel\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Create Task\" is not visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"E2E Task - Should Not Save\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC029",
+    "title": "Delivery Radar shows tasks due soon and opens task details from highlight",
+    "description": "Verifies Delivery Radar highlights near-deadline tasks and clicking opens task detail with deadline health.",
+    "category": "Operational Task Management (Operacional)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Operacional\" in the main navigation/menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Delivery Radar\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on the first highlighted task in the Delivery Radar list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Task Details\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Deadline\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Deadline health visualization\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC030",
+    "title": "Delivery Radar empty state when no tasks are due within 3 days (if applicable)",
+    "description": "Verifies an appropriate empty or non-highlight state is shown when there are no near-deadline tasks.",
+    "category": "Operational Task Management (Operacional)",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Operacional\" in the main navigation/menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Delivery Radar\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"No tasks due soon\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC031",
+    "title": "Create a new meeting and verify it appears in Scheduled column",
+    "description": "Verifies a user can create a meeting from Administrativo and sees it listed under Scheduled.",
+    "category": "Administrative Demands & Meetings (Administrativo)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Administrativo\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/administrativo\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Create meeting\" button"
+      }
+    ]
+  },
+  {
+    "id": "TC032",
+    "title": "Save meeting with required details and verify it is listed in Scheduled",
+    "description": "Verifies meeting creation requires details, saves successfully, and shows the meeting in the Scheduled column.",
+    "category": "Administrative Demands & Meetings (Administrativo)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Administrativo\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Create meeting\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"New meeting\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E Meeting - Scheduled\" into the meeting title field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      }
+    ]
+  },
+  {
+    "id": "TC033",
+    "title": "Demand creation shows validation errors when required fields are empty",
+    "description": "Verifies demand creation enforces required fields and displays validation messages when saving empty form.",
+    "category": "Administrative Demands & Meetings (Administrativo)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Administrativo\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Create demand\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Required\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC034",
+    "title": "Fix validation errors and save demand successfully",
+    "description": "Verifies a user can complete missing required fields after validation errors and save a demand successfully.",
+    "category": "Administrative Demands & Meetings (Administrativo)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Administrativo\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Create demand\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E Demand - Validation Fix\" into the demand title field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"E2E Demand - Validation Fix\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC035",
+    "title": "Update collaborator permission: toggle Diretório module access and save",
+    "description": "Verifies an admin can edit a collaborator’s permissions and successfully save a change to Diretório access.",
+    "category": "Directory & Collaborator Management (Diretório)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Diretório\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/diretorio\""
+      },
+      {
+        "type": "action",
+        "description": "Click on a collaborator entry in the list"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Edit permissions\""
+      },
+      {
+        "type": "action",
+        "description": "Click the toggle for \"Diretório\" access"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Permissions updated\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC036",
+    "title": "Deactivate collaborator with custom confirmation modal",
+    "description": "Verifies a collaborator can be deactivated only after confirming in the custom modal and the status becomes inactive.",
+    "category": "Directory & Collaborator Management (Diretório)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Diretório\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/diretorio\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Deactivate\" button for a collaborator"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Confirm deactivation\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Confirm\" button in the confirmation modal"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Inactive\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC037",
+    "title": "Cancel collaborator deactivation from confirmation modal",
+    "description": "Verifies the deactivation modal can be dismissed and the collaborator remains active when cancellation is chosen.",
+    "category": "Directory & Collaborator Management (Diretório)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Diretório\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/diretorio\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Deactivate\" button for a collaborator"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Confirm deactivation\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Cancel\" button in the confirmation modal"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Active\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC038",
+    "title": "Search client by name and open subscription lifecycle details",
+    "description": "Verifies client search filters results and a client record shows subscription lifecycle and mensalidades information.",
+    "category": "Directory & Collaborator Management (Diretório)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Diretório\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/diretorio\""
+      },
+      {
+        "type": "action",
+        "description": "Type \"Acme\" into the client search field"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Acme\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on the client named \"Acme\" in the results"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Subscription\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Mensalidades\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC039",
+    "title": "Search yields no results state",
+    "description": "Verifies the directory shows a clear empty state when the search query matches no clients or collaborators.",
+    "category": "Directory & Collaborator Management (Diretório)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Diretório\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/diretorio\""
+      },
+      {
+        "type": "action",
+        "description": "Type \"zzzz-nonexistent-client\" into the client search field"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"No results\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC040",
+    "title": "Delete client: cancel from confirmation modal leaves client intact",
+    "description": "Verifies canceling the delete confirmation modal does not delete the client and returns to a stable UI state.",
+    "category": "Directory & Collaborator Management (Diretório)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Diretório\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/diretorio\""
+      },
+      {
+        "type": "action",
+        "description": "Click on a client entry in the list"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Delete client\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Confirm deletion\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Cancel\" button in the confirmation modal"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Client details\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC041",
+    "title": "Permissions edit: discard changes by leaving without saving",
+    "description": "Verifies toggling a permission without saving does not show a success message and the user can exit the editor safely.",
+    "category": "Directory & Collaborator Management (Diretório)",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Diretório\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/diretorio\""
+      },
+      {
+        "type": "action",
+        "description": "Click on a collaborator entry in the list"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Edit permissions\""
+      },
+      {
+        "type": "action",
+        "description": "Click the toggle for \"Diretório\" access"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Close\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Permissions updated\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC042",
+    "title": "Create a new calendar event from a day cell and confirm it appears on the month grid",
+    "description": "Verifies a user can create an event via the calendar cell modal flow and see the new event displayed on the calendar.",
+    "category": "Calendar (Calendário)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Calendário\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/calendario\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Month calendar grid\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on a day cell in the month grid that is currently visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Event creation modal\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E New Event\" into the \"Title\" field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"E2E New Event\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC043",
+    "title": "Cancel event creation from the modal and ensure no new event is added",
+    "description": "Verifies dismissing event creation does not add an event to the calendar grid.",
+    "category": "Calendar (Calendário)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Calendário\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/calendario\""
+      },
+      {
+        "type": "action",
+        "description": "Click on a day cell in the month grid that is currently visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Event creation modal\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E Cancelled Event\" into the \"Title\" field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Cancel\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Event creation modal\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC044",
+    "title": "Create event validation: attempt to save with missing required title",
+    "description": "Verifies the modal prevents saving when required fields are empty and shows a visible validation message.",
+    "category": "Calendar (Calendário)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Calendário\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/calendario\""
+      },
+      {
+        "type": "action",
+        "description": "Click on a day cell in the month grid that is currently visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Event creation modal\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Title\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC045",
+    "title": "Send a message in an existing conversation and see it appear in the thread",
+    "description": "Verifies a user can open a recent conversation, send a message, and see it appear in message history.",
+    "category": "Internal Chat (Chat)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Chat\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/chat\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the first conversation in the recent conversations list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Message history\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E test message - existing conversation\" into the message input field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Send\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"E2E test message - existing conversation\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC046",
+    "title": "Create a new conversation, send the first message, and verify it appears in recents",
+    "description": "Verifies a user can start a new conversation, send an initial message, and see the conversation added to the recent list.",
+    "category": "Internal Chat (Chat)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Chat\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/chat\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New conversation\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Select recipient\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Select the first available recipient from the recipient list"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Hello from E2E - new conversation\" into the message input field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Send\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Hello from E2E - new conversation\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Back\" control within the chat UI to return to the conversation list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Hello from E2E - new conversation\" is visible in the recent conversations list"
+      }
+    ]
+  },
+  {
+    "id": "TC047",
+    "title": "Chat page loads and shows recent conversations list",
+    "description": "Verifies the Chat landing page renders and shows the list of recent conversations for a logged-in user.",
+    "category": "Internal Chat (Chat)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Chat\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/chat\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Conversations\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Recent conversations list\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC048",
+    "title": "Opening a conversation shows message history and message composer",
+    "description": "Verifies that selecting a conversation opens the thread view with history and a message input area.",
+    "category": "Internal Chat (Chat)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Chat\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/chat\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the first conversation in the recent conversations list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Message history\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Message input field\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Send\" button is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC049",
+    "title": "Prevent sending an empty message",
+    "description": "Verifies the user cannot send a blank message and receives visible feedback or the send action is disabled.",
+    "category": "Internal Chat (Chat)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Chat\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/chat\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the first conversation in the recent conversations list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Message history\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the message input field"
+      },
+      {
+        "type": "action",
+        "description": "Press Enter"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Message cannot be empty\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC050",
+    "title": "Starting a new conversation requires selecting a recipient",
+    "description": "Verifies the UI blocks sending the first message until a recipient is selected.",
+    "category": "Internal Chat (Chat)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Chat\" in the main navigation menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/chat\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New conversation\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Select recipient\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Type \"First message without recipient\" into the message input field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Send\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Select a recipient\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC051",
+    "title": "Open an unread notification and navigate to its related module",
+    "description": "Verifies that clicking an unread notification navigates to the related page and shows expected context on the destination screen.",
+    "category": "Notifications (Notificações)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Notificações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/notificacoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click on the first visible unread notification in the list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/operacional\""
+      }
+    ]
+  },
+  {
+    "id": "TC052",
+    "title": "Unread notifications list is visible with clear unread indicators",
+    "description": "Verifies that the notifications center shows a visible list and indicates which items are unread.",
+    "category": "Notifications (Notificações)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Notificações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/notificacoes\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Notifications list\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Não lidas\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC053",
+    "title": "Mark all notifications as read resets unread count in the notifications center",
+    "description": "Verifies that using \"Mark all as read\" updates the visible unread count/state within the notifications page.",
+    "category": "Notifications (Notificações)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Notificações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/notificacoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Mark all as read\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"0\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC054",
+    "title": "Mark all as read shows success feedback in the UI",
+    "description": "Verifies that the UI provides a visible confirmation after marking all notifications as read.",
+    "category": "Notifications (Notificações)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Notificações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/notificacoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Mark all as read\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"All\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC055",
+    "title": "Clicking a notification can route to the Calendar module when applicable",
+    "description": "Verifies that selecting a calendar-related notification navigates to the calendar page.",
+    "category": "Notifications (Notificações)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Notificações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/notificacoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click on a visible notification whose text mentions \"Calendário\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/calendario\""
+      }
+    ]
+  },
+  {
+    "id": "TC056",
+    "title": "Notifications page loads and shows empty state when there are no notifications",
+    "description": "Verifies that the notifications center gracefully displays an empty-state message when no notifications exist.",
+    "category": "Notifications (Notificações)",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Notificações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/notificacoes\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"No notifications\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC057",
+    "title": "Create a new template and verify it appears in the list",
+    "description": "Verifies a user can create a template with subject and body and see it listed afterward.",
+    "category": "Templates & Useful Links (Templates)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click \"Templates\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/templates"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Create Template\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Create Template\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Subject\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E Template Subject - Alpha\" into the Subject field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"E2E body content for Alpha template.\" into the Body field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"E2E Template Subject - Alpha\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC058",
+    "title": "Validate required fields when creating a template (save with empty fields)",
+    "description": "Verifies the UI prevents saving a template when required fields are missing.",
+    "category": "Templates & Useful Links (Templates)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click \"Templates\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/templates"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Create Template\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Subject\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Body\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC059",
+    "title": "Templates page loads and shows core sections (templates and useful links)",
+    "description": "Verifies the Templates page renders expected core UI elements for templates and useful external sites.",
+    "category": "Templates & Useful Links (Templates)",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click \"Templates\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/templates"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify page title contains \"Templates\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Useful\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Links\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC060",
+    "title": "Admin updates a role permissions and sees the update applied",
+    "description": "Verifies an authenticated user can edit a role, save permission changes, and see the updated state reflected on the page.",
+    "category": "Configurations & Permissions (Configuracoes)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" or \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Edit\" button for a role in the permissions list"
+      },
+      {
+        "type": "action",
+        "description": "Click to toggle one permission option (for example, a module access checkbox) to a different state"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Saved\" or \"Salvo\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC061",
+    "title": "Cancel role permission edit does not change permissions",
+    "description": "Verifies leaving an edit session without saving does not apply changes to role permissions.",
+    "category": "Configurations & Permissions (Configuracoes)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" or \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Edit\" button for a role in the permissions list"
+      },
+      {
+        "type": "action",
+        "description": "Click to toggle one permission option to a different state"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Cancel\" or \"Close\" button in the edit UI"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Saved\" or \"Salvo\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC062",
+    "title": "Saving role permissions without changes keeps current state",
+    "description": "Verifies saving an unchanged permissions form does not introduce unexpected modifications and still confirms completion.",
+    "category": "Configurations & Permissions (Configuracoes)",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" or \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Edit\" button for a role in the permissions list"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Saved\" or \"Salvo\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC063",
+    "title": "Non-admin attempt to grant module access is blocked with access denied",
+    "description": "Verifies the UI prevents permission escalation when the logged-in user lacks admin rights, showing an access denied message and blocking changes.",
+    "category": "Configurations & Permissions (Configuracoes)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" or \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Edit\" button for a user or role module access entry"
+      },
+      {
+        "type": "action",
+        "description": "Click to enable a module access option that appears restricted"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Access denied\" or \"Acesso negado\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC064",
+    "title": "Blocked permission change does not persist after refresh/navigation",
+    "description": "Verifies that after an access denied attempt, the permission does not appear enabled when revisiting the Configurações page.",
+    "category": "Configurations & Permissions (Configuracoes)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" or \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Edit\" button for a user or role module access entry"
+      },
+      {
+        "type": "action",
+        "description": "Click to enable a module access option that appears restricted"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Access denied\" or \"Acesso negado\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Dashboard\" or \"Início\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Access denied\" or \"Acesso negado\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC065",
+    "title": "Update a system category and see success toast",
+    "description": "Verifies a category change can be saved from Configurações and the UI confirms with a visible success message/toast.",
+    "category": "Configurations & Permissions (Configuracoes)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" or \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click into a system category field (name/label) in the categories panel"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Categoria Teste\" into the category name/label field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button for categories"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Success\" or \"Sucesso\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC066",
+    "title": "Updated category is reflected in another module page",
+    "description": "Verifies that after saving a category in Configurações, the updated category label is visible elsewhere in the app UI.",
+    "category": "Configurations & Permissions (Configuracoes)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" or \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click into a system category field (name/label) in the categories panel"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Categoria Teste\" into the category name/label field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button for categories"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Success\" or \"Sucesso\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Comercial\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/comercial\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Categoria Teste\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC067",
+    "title": "Category save validation: empty category name is rejected",
+    "description": "Verifies the UI blocks saving a system category when the category name is empty and shows a visible validation error.",
+    "category": "Configurations & Permissions (Configuracoes)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the username/email field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" or \"Login\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Configurações\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/configuracoes\""
+      },
+      {
+        "type": "action",
+        "description": "Click into a system category name/label field in the categories panel"
+      },
+      {
+        "type": "action",
+        "description": "Press \"Backspace\" to clear the category name/label field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" button for categories"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Required\" or \"Obrigatório\" is visible"
+      }
+    ]
+  }
+]
