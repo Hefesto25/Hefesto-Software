@@ -1,5 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+// @ts-ignore: Importação estilo Deno que o TS padrão não reconhece
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// @ts-ignore: Deno global
+declare const Deno: any;
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
