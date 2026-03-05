@@ -45,6 +45,13 @@ const MONTH_ABBR: Record<string, string> = {
     '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 };
 
+const MONTH_NAMES: Record<string, string> = {
+    '01': 'Janeiro', '02': 'Fevereiro', '03': 'Março', '04': 'Abril',
+    '05': 'Maio', '06': 'Junho', '07': 'Julho', '08': 'Agosto',
+    '09': 'Setembro', '10': 'Outubro', '11': 'Novembro', '12': 'Dezembro',
+    'todos': 'Ano Inteiro'
+};
+
 const PIE_COLORS = ['#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#06B6D4', '#A78BFA', '#F472B6'];
 
 type Tab = 'painel' | 'movimentacoes' | 'planejamento' | 'rentabilidade';
@@ -98,6 +105,14 @@ export default function FinanceiroPage() {
     const [formDateVencimento, setFormDateVencimento] = useState(getBahiaDateString());
     const [formDatePagamento, setFormDatePagamento] = useState<string>('');
     const [formSaving, setFormSaving] = useState(false);
+
+    // DRE specific states
+    const [dreMonth1, setDreMonth1] = useState<string>(currentMonth);
+    const [dreYear1, setDreYear1] = useState<string>(currentYear);
+    const [dreMonth2, setDreMonth2] = useState<string>(''); // For comparison
+    const [dreYear2, setDreYear2] = useState<string>('');
+    const [dreIsComparative, setDreIsComparative] = useState(false);
+    const [dreIsAccumulated, setDreIsAccumulated] = useState(false);
     const [formIsRecurrente, setFormIsRecurrente] = useState(false);
     const [formRecurrenciaTipo, setFormRecurrenciaTipo] = useState<'mensal' | 'semanal' | 'anual'>('mensal');
     const [formRecurrenciaQtd, setFormRecurrenciaQtd] = useState(1);
@@ -398,16 +413,69 @@ export default function FinanceiroPage() {
     }
 
     // Computed stats: DRE from completed transactions
-    const totalReceitaDRE = completedTransactions.filter(i => i.tipo === 'entrada').reduce((a, b) => a + Number(b.valor), 0);
-    const totalDespesasDRE = completedTransactions.filter(i => i.tipo === 'saida').reduce((a, b) => a + Number(b.valor), 0);
-    const lucroBrutoDRE = totalReceitaDRE - totalDespesasDRE;
+    // Helper: calculate DRE data for a given month/year
+    const calculateDREData = (month: string, year: string, isAccumulated: boolean) => {
+        const filteredTransactions = transactionsData.filter(item => {
+            const dateStr = item.data_pagamento || item.data_vencimento;
+            const [itemYear, itemMonth] = dateStr.split('-');
+            if (isAccumulated) {
+                return itemYear === year && (month === 'todos' ? true : itemMonth <= month);
+            }
+            return itemYear === year && (month === 'todos' || itemMonth === month);
+        });
 
-    // Group expenses by classificação for DRE
-    const despesasByClass: Record<string, number> = {};
-    completedTransactions.filter(i => i.tipo === 'saida').forEach(item => {
-        const key = item.classificacao || 'Outros';
-        despesasByClass[key] = (despesasByClass[key] || 0) + Number(item.valor);
-    });
+        const filteredTaxes = taxesData.filter(item => {
+            const dateStr = item.data_pagamento || item.data_vencimento;
+            const [itemYear, itemMonth] = dateStr.split('-');
+            if (isAccumulated) {
+                return itemYear === year && (month === 'todos' ? true : itemMonth <= month);
+            }
+            return itemYear === year && (month === 'todos' || itemMonth === month);
+        });
+
+        const receitaBruta = filteredTransactions
+            .filter(i => i.tipo === 'entrada' && i.classificacao === 'Receitas')
+            .reduce((s, i) => s + Number(i.valor), 0);
+
+        const deducoes = filteredTaxes.reduce((s, i) => s + Number(i.valor), 0);
+        const receitaLiquida = receitaBruta - deducoes;
+
+        const custosFixos = filteredTransactions
+            .filter(i => i.tipo === 'saida' && i.classificacao === 'Custos Fixos')
+            .reduce((s, i) => s + Number(i.valor), 0);
+        const custosVariaveis = filteredTransactions
+            .filter(i => i.tipo === 'saida' && i.classificacao === 'Custos Variáveis')
+            .reduce((s, i) => s + Number(i.valor), 0);
+        const totalCustos = custosFixos + custosVariaveis;
+
+        const margemContribuicao = receitaLiquida - totalCustos;
+
+        // Group despesas by category
+        const despesasByCategory: Record<string, number> = {};
+        const despesaTypes = ['Despesas Fixas', 'Despesas Variáveis', 'Gastos'];
+        filteredTransactions
+            .filter(i => i.tipo === 'saida' && despesaTypes.includes(i.classificacao || ''))
+            .forEach(i => {
+                const cat = i.categoria || 'Gastos Diversos / Outros';
+                despesasByCategory[cat] = (despesasByCategory[cat] || 0) + Number(i.valor);
+            });
+
+        const totalDespesas = Object.values(despesasByCategory).reduce((a, b) => a + b, 0);
+        const ebit = margemContribuicao - totalDespesas;
+
+        return {
+            receitaBruta,
+            deducoes,
+            receitaLiquida,
+            custosFixos,
+            custosVariaveis,
+            totalCustos,
+            margemContribuicao,
+            despesasByCategory,
+            totalDespesas,
+            ebit
+        };
+    };
 
     const tabs: { key: Tab; label: string }[] = [
         { key: 'painel', label: 'Painel' },
@@ -1170,66 +1238,193 @@ export default function FinanceiroPage() {
 
                         {/* --- Sub-Aba DRE --- */}
                         {activeSubTabPlanejamento === 'dre' && (() => {
-                            const completedTransactions = transactionsData.filter((t: FinancialTransaction) => t.status === 'pago_recebido');
-                            const totalReceitaDRE = completedTransactions.filter(i => i.tipo === 'entrada').reduce((a, b) => a + Number(b.valor), 0);
-                            const totalDespesasDRE = completedTransactions.filter(i => i.tipo === 'saida').reduce((a, b) => a + Number(b.valor), 0);
-                            const lucroBrutoDRE = totalReceitaDRE - totalDespesasDRE;
+                            const data1 = calculateDREData(dreMonth1, dreYear1, dreIsAccumulated);
+                            const data2 = dreIsComparative ? calculateDREData(dreMonth2, dreYear2, dreIsAccumulated) : null;
 
-                            // Group expenses by classificação for DRE
-                            const despesasByClass: Record<string, number> = {};
-                            completedTransactions.filter(i => i.tipo === 'saida').forEach(item => {
-                                const key = item.classificacao || 'Outros';
-                                despesasByClass[key] = (despesasByClass[key] || 0) + Number(item.valor);
-                            });
+                            const calcAV = (val: number, base: number) => base > 0 ? (val / base) * 100 : 0;
+                            const calcDeltaR = (v1: number, v2: number) => v1 - v2;
+                            const calcDeltaP = (v1: number, v2: number) => {
+                                if (v2 === 0) return v1 > 0 ? 100 : v1 < 0 ? -100 : 0;
+                                return ((v1 - v2) / Math.abs(v2)) * 100;
+                            };
+
+                            const formatAV = (val: number) => `${val.toFixed(1).replace('.', ',')}%`;
+                            const formatValue = (v: number) => v < 0 ? `(${formatCurrency(Math.abs(v))})` : formatCurrency(v);
+                            const getValClass = (v: number, reverse = false) => {
+                                if (v === 0) return '';
+                                if (reverse) return v > 0 ? 'negative' : 'positive';
+                                return v > 0 ? 'positive' : 'negative';
+                            };
+
+                            const renderDRERow = (label: string, v1: number, v2?: number, isTotal = false, isSub = false) => {
+                                const av1 = calcAV(v1, data1.receitaBruta);
+                                const deltaR = v2 !== undefined ? calcDeltaR(v1, v2) : 0;
+                                const deltaP = v2 !== undefined ? calcDeltaP(v1, v2) : 0;
+                                const av2 = v2 !== undefined ? calcAV(v2, data2?.receitaBruta || 0) : 0;
+
+                                return (
+                                    <tr className={isTotal ? 'dre-total' : isSub ? 'dre-subcategory' : 'dre-category'}
+                                        style={isTotal ? { fontWeight: 700, borderTop: isSub ? 'none' : '1px solid var(--border-default)' } : {}}>
+                                        <td style={{ paddingLeft: isSub ? 32 : 16 }}>{isTotal ? <strong>{label}</strong> : label}</td>
+                                        <td style={{ textAlign: 'right' }} className={getValClass(v1)}>{isTotal ? <strong>{formatValue(v1)}</strong> : formatValue(v1)}</td>
+                                        <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{formatAV(av1)}</td>
+                                        {dreIsComparative && (
+                                            <>
+                                                <td style={{ textAlign: 'right' }} className={getValClass(v2 || 0)}>{formatValue(v2 || 0)}</td>
+                                                <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{formatAV(av2)}</td>
+                                                <td style={{ textAlign: 'right' }} className={getValClass(deltaR)}>{deltaR > 0 ? '+' : ''}{formatCurrency(deltaR)}</td>
+                                                <td style={{ textAlign: 'right', fontSize: 12 }} className={getValClass(deltaP)}>{deltaP > 0 ? '+' : ''}{deltaP.toFixed(1)}%</td>
+                                            </>
+                                        )}
+                                    </tr>
+                                );
+                            };
 
                             return (
-                                <div className="table-card">
-                                    <div className="table-card-title">Demonstrativo de Resultado do Exercício (DRE) — {getBahiaDate().getFullYear()}</div>
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th style={{ width: '60%' }}>Descrição</th>
-                                                <th style={{ textAlign: 'right' }}>Valor (R$)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr className="dre-category"><td>RECEITA OPERACIONAL BRUTA</td><td style={{ textAlign: 'right' }}></td></tr>
-                                            <tr className="dre-subcategory"><td>Receita de Serviços</td><td style={{ textAlign: 'right' }} className="positive">{formatCurrency(totalReceitaDRE)}</td></tr>
-                                            <tr className="dre-total"><td><strong>RECEITA OPERACIONAL LÍQUIDA</strong></td><td style={{ textAlign: 'right' }} className="positive"><strong>{formatCurrency(totalReceitaDRE)}</strong></td></tr>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                                    <div className="filter-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Período:</span>
+                                                <select className="form-select" style={{ width: 120, padding: '6px 10px' }} value={dreMonth1} onChange={e => setDreMonth1(e.target.value)}>
+                                                    {Object.entries(MONTH_NAMES).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                                                </select>
+                                                <select className="form-select" style={{ width: 90, padding: '6px 10px' }} value={dreYear1} onChange={e => setDreYear1(e.target.value)}>
+                                                    {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                                </select>
+                                            </div>
 
-                                            <tr className="dre-category"><td>DESPESAS OPERACIONAIS</td><td style={{ textAlign: 'right' }}></td></tr>
-                                            {Object.entries(despesasByClass).map(([key, val]) => (
-                                                <tr key={key} className="dre-subcategory"><td>(–) {key}</td><td style={{ textAlign: 'right' }} className="negative">({formatCurrency(val)})</td></tr>
-                                            ))}
-                                            {totalDespesasDRE === 0 && (
-                                                <tr className="dre-subcategory"><td colSpan={2} style={{ color: 'var(--text-muted)', textAlign: 'center' }}>Nenhuma despesa registrada</td></tr>
+                                            {dreIsComparative && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 16, borderLeft: '1px solid var(--border-default)' }}>
+                                                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Comparar com:</span>
+                                                    <select className="form-select" style={{ width: 120, padding: '6px 10px' }} value={dreMonth2} onChange={e => setDreMonth2(e.target.value)}>
+                                                        {Object.entries(MONTH_NAMES).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                                                    </select>
+                                                    <select className="form-select" style={{ width: 90, padding: '6px 10px' }} value={dreYear2} onChange={e => setDreYear2(e.target.value)}>
+                                                        {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                                    </select>
+                                                </div>
                                             )}
-                                            <tr className="dre-total"><td><strong>TOTAL DESPESAS</strong></td><td style={{ textAlign: 'right' }} className="negative"><strong>({formatCurrency(totalDespesasDRE)})</strong></td></tr>
+                                        </div>
 
-                                            <tr className="dre-total" style={{ borderTop: '3px solid var(--accent)' }}>
-                                                <td><strong style={{ color: 'var(--accent-light)', fontSize: 15 }}>RESULTADO DO EXERCÍCIO</strong></td>
-                                                <td style={{ textAlign: 'right', fontSize: 15 }} className={lucroBrutoDRE >= 0 ? 'positive' : 'negative'}><strong>{formatCurrency(lucroBrutoDRE)}</strong></td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <button
+                                                className={`btn ${dreIsAccumulated ? 'btn-primary' : 'btn-secondary'}`}
+                                                onClick={() => setDreIsAccumulated(!dreIsAccumulated)}
+                                                style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8 }}
+                                            >
+                                                {dreIsAccumulated ? 'Ver Mensal' : 'Acumulado Anual'}
+                                            </button>
+                                            <button
+                                                className={`btn ${dreIsComparative ? 'btn-primary' : 'btn-secondary'}`}
+                                                onClick={() => setDreIsComparative(!dreIsComparative)}
+                                                style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8 }}
+                                            >
+                                                {dreIsComparative ? 'Remover Comparação' : 'Comparar Períodos'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="table-card">
+                                        <div className="table-card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <span>Demonstrativo de Resultado do Exercício (DRE)</span>
+                                            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>Valores em base 100% na Receita Bruta</span>
+                                        </div>
+                                        <table className="data-table">
+                                            <thead>
+                                                <tr>
+                                                    <th style={{ width: dreIsComparative ? '25%' : '60%' }}>Descrição</th>
+                                                    <th style={{ textAlign: 'right' }}>{MONTH_NAMES[dreMonth1]}/{dreYear1} (R$)</th>
+                                                    <th style={{ textAlign: 'right', width: 80 }}>AV%</th>
+                                                    {dreIsComparative && (
+                                                        <>
+                                                            <th style={{ textAlign: 'right' }}>{MONTH_NAMES[dreMonth2]}/{dreYear2} (R$)</th>
+                                                            <th style={{ textAlign: 'right', width: 80 }}>AV%</th>
+                                                            <th style={{ textAlign: 'right' }}>Δ R$</th>
+                                                            <th style={{ textAlign: 'right', width: 80 }}>Δ %</th>
+                                                        </>
+                                                    )}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {renderDRERow('RECEITA OPERACIONAL BRUTA', data1.receitaBruta, data2?.receitaBruta, true)}
+                                                {renderDRERow('Receita de Serviços / Vendas', data1.receitaBruta, data2?.receitaBruta, false, true)}
+
+                                                <tr style={{ height: 16 }}></tr>
+                                                {renderDRERow('(–) DEDUÇÕES E IMPOSTOS', -data1.deducoes, data2 ? -data2.deducoes : undefined)}
+                                                {renderDRERow('Impostos sobre receita', -data1.deducoes, data2 ? -data2.deducoes : undefined, false, true)}
+
+                                                <tr style={{ height: 16 }}></tr>
+                                                {renderDRERow('(=) RECEITA OPERACIONAL LÍQUIDA', data1.receitaLiquida, data2?.receitaLiquida, true)}
+
+                                                <tr style={{ height: 16 }}></tr>
+                                                {/* Custos Operacionais */}
+                                                {renderDRERow('(–) CUSTOS OPERACIONAIS', -data1.totalCustos, data2 ? -data2.totalCustos : undefined)}
+                                                {renderDRERow('Custos Fixos', -data1.custosFixos, data2 ? -data2.custosFixos : undefined, false, true)}
+                                                {renderDRERow('Custos Variáveis', -data1.custosVariaveis, data2 ? -data2.custosVariaveis : undefined, false, true)}
+
+                                                <tr style={{ height: 16 }}></tr>
+                                                {renderDRERow('(=) MARGEM DE CONTRIBUIÇÃO', data1.margemContribuicao, data2?.margemContribuicao, true)}
+
+                                                <tr style={{ height: 16 }}></tr>
+                                                {/* Despesas Operacionais */}
+                                                <tr className="dre-category"><td>(–) DESPESAS OPERACIONAIS</td><td style={{ textAlign: 'right' }} className="negative">{formatValue(-data1.totalDespesas)}</td><td style={{ textAlign: 'right', fontSize: 12 }}>{formatAV(calcAV(-data1.totalDespesas, data1.receitaBruta))}</td>{dreIsComparative && <><td style={{ textAlign: 'right' }} className="negative">{formatValue(-(data2?.totalDespesas || 0))}</td><td></td><td></td><td></td></>}</tr>
+
+                                                {/* Predefined Categories first, then others with remaining balance */}
+                                                {['Pessoal', 'Marketing', 'Administrativo', 'Operacional', 'Comercial', 'Comissão', 'Ferramenta'].map(cat => {
+                                                    const v1 = -(data1.despesasByCategory[cat] || 0);
+                                                    const v2 = data2 ? -(data2.despesasByCategory[cat] || 0) : undefined;
+                                                    return renderDRERow(cat, v1, v2, false, true);
+                                                })}
+                                                {/* Others */}
+                                                {(() => {
+                                                    const predefined = ['Pessoal', 'Marketing', 'Administrativo', 'Operacional', 'Comercial', 'Comissão', 'Ferramenta'];
+                                                    const others1 = Object.entries(data1.despesasByCategory).filter(([k]) => !predefined.includes(k)).reduce((s, [_, v]) => s + v, 0);
+                                                    const others2 = data2 ? Object.entries(data2.despesasByCategory).filter(([k]) => !predefined.includes(k)).reduce((s, [_, v]) => s + v, 0) : 0;
+                                                    if (others1 !== 0 || (dreIsComparative && others2 !== 0)) {
+                                                        return renderDRERow('Gastos Diversos / Outros', -others1, data2 ? -others2 : undefined, false, true);
+                                                    }
+                                                    return null;
+                                                })()}
+
+                                                <tr style={{ height: 32 }}></tr>
+                                                <tr className="dre-total" style={{ borderTop: '3px solid var(--accent)', background: 'rgba(255,255,255,0.02)' }}>
+                                                    <td><strong style={{ color: 'var(--accent-light)', fontSize: 15 }}>(=) RESULTADO OPERACIONAL (EBIT)</strong></td>
+                                                    <td style={{ textAlign: 'right', fontSize: 16 }} className={getValClass(data1.ebit)}><strong>{formatValue(data1.ebit)}</strong></td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatAV(calcAV(data1.ebit, data1.receitaBruta))}</td>
+                                                    {dreIsComparative && (
+                                                        <>
+                                                            <td style={{ textAlign: 'right', fontSize: 16 }} className={getValClass(data2?.ebit || 0)}><strong>{formatValue(data2?.ebit || 0)}</strong></td>
+                                                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatAV(calcAV(data2?.ebit || 0, data2?.receitaBruta || 0))}</td>
+                                                            <td style={{ textAlign: 'right', fontWeight: 700 }} className={getValClass(calcDeltaR(data1.ebit, data2?.ebit || 0))}>{formatValue(calcDeltaR(data1.ebit, data2?.ebit || 0))}</td>
+                                                            <td style={{ textAlign: 'right', fontWeight: 700 }} className={getValClass(calcDeltaP(data1.ebit, data2?.ebit || 0))}>{calcDeltaP(data1.ebit, data2?.ebit || 0) > 0 ? '+' : ''}{calcDeltaP(data1.ebit, data2?.ebit || 0).toFixed(1)}%</td>
+                                                        </>
+                                                    )}
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             );
                         })()}
 
                         {/* --- Sub-Aba Metas & Planejamento --- */}
-                        {activeSubTabPlanejamento === 'metas' && (
-                            <MetasPlanejamentoTab
-                                goals={goals}
-                                setGoals={setGoals}
-                                budgetPlan={budgetPlan}
-                                setBudgetPlan={setBudgetPlan}
-                                formatCurrency={formatCurrency}
-                                totalReceitaDRE={totalReceitaDRE}
-                                totalDespesasDRE={totalDespesasDRE}
-                                despesasByClass={despesasByClass}
-                                lucroBrutoDRE={lucroBrutoDRE}
-                            />
-                        )}
+                        {activeSubTabPlanejamento === 'metas' && (() => {
+                            const dre = calculateDREData(currentMonth, currentYear, false);
+                            return (
+                                <MetasPlanejamentoTab
+                                    goals={goals}
+                                    setGoals={setGoals}
+                                    budgetPlan={budgetPlan}
+                                    setBudgetPlan={setBudgetPlan}
+                                    formatCurrency={formatCurrency}
+                                    totalReceitaDRE={dre.receitaBruta}
+                                    totalDespesasDRE={dre.totalDespesas}
+                                    despesasByClass={dre.despesasByCategory}
+                                    lucroBrutoDRE={dre.ebit}
+                                />
+                            );
+                        })()}
                     </>
                 )
             }
