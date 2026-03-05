@@ -329,6 +329,8 @@ function AppContent({ children }: { children: React.ReactNode }) {
   );
 }
 
+import { SpeedInsights } from "@vercel/speed-insights/next";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
@@ -344,6 +346,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </AppContent>
           </NotificationProvider>
         </AuthProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
