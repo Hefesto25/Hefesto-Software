@@ -939,7 +939,17 @@ export default function ComercialPage() {
                     if (!over) return;
 
                     const dealId = active.id as string;
-                    const stageId = over.id as Deal['stage'];
+                    let stageId = over.id as any;
+
+                    // Se o 'over' for um card (deal), pegamos a etapa desse card
+                    const overDeal = deals.find(d => d.id === over.id);
+                    if (overDeal) {
+                        stageId = overDeal.stage;
+                    }
+
+                    // Validar se stageId é uma das etapas permitidas
+                    if (!STAGES.some(s => s.id === stageId)) return;
+
                     const deal = deals.find(d => d.id === dealId);
                     if (!deal || deal.stage === stageId) return;
 
@@ -1178,11 +1188,16 @@ export default function ComercialPage() {
                                         <button className="btn btn-primary" onClick={async () => {
                                             if (!lostReason) return showToast('Selecione um motivo');
                                             try {
+                                                const updatedAt = new Date().toISOString();
                                                 await updateDeal(showLostModal.dealId as string, {
                                                     stage: 'perdido',
                                                     motivo_perda: lostReason,
-                                                    data_entrada_etapa: new Date().toISOString()
+                                                    data_entrada_etapa: updatedAt
                                                 });
+
+                                                // Update local state
+                                                setDealsData(deals.map(d => d.id === showLostModal.dealId ? { ...d, stage: 'perdido', motivo_perda: lostReason, data_entrada_etapa: updatedAt } : d));
+
                                                 setShowLostModal({ isOpen: false, dealId: null });
                                                 setLostReason('');
                                                 showToast('Negócio marcado como Perdido.');
@@ -1233,10 +1248,14 @@ export default function ComercialPage() {
                                                 const d = deals.find(x => x.id === showWonModal.dealId);
                                                 if (!d) return;
 
+                                                const updatedAt = new Date().toISOString();
                                                 await updateDeal(showWonModal.dealId as string, {
                                                     stage: 'fechado',
-                                                    data_entrada_etapa: new Date().toISOString()
+                                                    data_entrada_etapa: updatedAt
                                                 });
+
+                                                // Update local state
+                                                setDealsData(deals.map(x => x.id === showWonModal.dealId ? { ...x, stage: 'fechado', data_entrada_etapa: updatedAt } : x));
 
                                                 // --- GATILHOS OPERACIONAIS --- //
                                                 await addOperationalTask({
@@ -1441,12 +1460,15 @@ export default function ComercialPage() {
                                     </div>
 
                                     {isAdminGeral && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
-                                            <button className="btn btn-secondary" style={{ width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 600, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} onClick={() => { setGoalSellerName(seller.name); setShowGoalModal(true); }}>
+                                        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                                            <button className="btn btn-secondary" style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => { setGoalSellerName(seller.name); setShowGoalModal(true); }}>
                                                 Editar Meta
                                             </button>
-                                            <button className="btn" style={{ width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 600, color: 'var(--danger)', background: 'transparent', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }} onClick={() => handleRemoveMember(seller.id, seller.name)}>
-                                                Remover
+                                            <button className="btn" style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, color: 'var(--danger)', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', transition: 'all 0.2s' }}
+                                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; }}
+                                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'; }}
+                                                onClick={() => handleRemoveMember(seller.id, seller.name)}>
+                                                <Trash2 size={14} /> Remover
                                             </button>
                                         </div>
                                     )}
