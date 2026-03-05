@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Send, Hash, Plus, Paperclip, X, Users, Trash2, Settings, Reply, Download, FileText, Image as ImageIcon, FolderKanban, Activity, LayoutDashboard, Clock, ChevronLeft } from 'lucide-react';
 import {
     useCanais, useCanalParticipantes, useMensagens, useUsuarios,
@@ -42,6 +43,7 @@ function formatFileSize(bytes: number) {
 type ModalType = 'create' | 'edit' | 'participants' | 'deleteConfirm' | null;
 
 export default function ChatPage() {
+    const router = useRouter();
     const { user } = useAuth();
     const userId = user?.id;
     const { data: canais, loading: loadingCanais, setData: setCanais, refetch: refetchCanais } = useCanais(userId);
@@ -278,12 +280,29 @@ export default function ChatPage() {
 
         // Process mentions for notifications
         if (result.success && result.mensagem) {
-            const mentionRegex = /@(\S+)/g;
-            let match;
-            while ((match = mentionRegex.exec(text)) !== null) {
-                const mentionedName = match[1];
+            const memberNames = participantes.map(p => p.usuario?.nome).filter(Boolean) as string[];
+            memberNames.sort((a, b) => b.length - a.length);
+            const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            const matches: string[] = [];
+            if (memberNames.length > 0) {
+                const pattern = new RegExp(memberNames.map(n => escapeRegExp(`@${n}`)).join('|'), 'g');
+                let match;
+                while ((match = pattern.exec(text)) !== null) {
+                    matches.push(match[0].substring(1)); // Remove @
+                }
+            } else {
+                const mentionRegex = /@(\S+)/g;
+                let match;
+                while ((match = mentionRegex.exec(text)) !== null) {
+                    matches.push(match[1]);
+                }
+            }
+
+            for (const mentionedName of matches) {
                 const mentionedUser = participantes.find(
-                    p => p.usuario?.nome.toLowerCase().startsWith(mentionedName.toLowerCase())
+                    p => p.usuario?.nome.toLowerCase() === mentionedName.toLowerCase() ||
+                        p.usuario?.nome.toLowerCase().startsWith(mentionedName.toLowerCase())
                 );
                 if (mentionedUser && mentionedUser.usuario_id !== userId) {
                     await createMentionNotification({
@@ -419,7 +438,7 @@ export default function ChatPage() {
         setModal('edit');
     };
 
-    // Handle task click for redirection
+    // Handle task click for redirection (only to the kanban board, without opening the task modal)
     const handleTaskClick = (taskId: string, moduleName: string) => {
         const moduleMap: Record<string, string> = {
             'Operacional': '/operacional',
@@ -427,14 +446,23 @@ export default function ChatPage() {
             'Administrativo': '/administrativo',
             'Financeiro': '/financeiro'
         };
-        const path = moduleMap[moduleName] || '/';
-        const url = `${path}?task_id=${taskId}`;
-        window.open(url, '_blank');
+        const url = moduleMap[moduleName] || '/';
+        router.push(url);
     };
 
     // Render mention text with highlighted mentions (users and tasks)
     const renderMsgText = (text: string, msg: Mensagem) => {
-        const parts = text.split(/(\[\[.*?\]\]|@\S+)/g);
+        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const memberNames = participantes.map(p => p.usuario?.nome).filter(Boolean) as string[];
+        memberNames.sort((a, b) => b.length - a.length);
+
+        let patternStr = '(\\[\\[.*?\\]\\]';
+        if (memberNames.length > 0) {
+            patternStr += '|' + memberNames.map(n => escapeRegExp(`@${n}`)).join('|');
+        }
+        patternStr += '|@\\S+)';
+
+        const parts = text.split(new RegExp(patternStr, 'g'));
         return parts.map((part, i) => {
             if (part.startsWith('[[') && part.endsWith(']]')) {
                 // Task Mention
@@ -518,12 +546,15 @@ export default function ChatPage() {
                         )}
 
                         {/* Reply quote */}
-                        {msg.mensagem_original && !msg.deletada && (
-                            <div className="chat-reply-quote">
-                                <span className="chat-reply-author">{msg.mensagem_original.autor?.nome || 'Usuário'}</span>
-                                <span className="chat-reply-text">{msg.mensagem_original.conteudo?.slice(0, 80) || '...'}</span>
-                            </div>
-                        )}
+                        {msg.mensagem_original && (!Array.isArray(msg.mensagem_original) || msg.mensagem_original.length > 0) && !msg.deletada && (() => {
+                            const originalMsg = Array.isArray(msg.mensagem_original) ? msg.mensagem_original[0] : msg.mensagem_original;
+                            return (
+                                <div className="chat-reply-quote">
+                                    <span className="chat-reply-author">{originalMsg.autor?.nome || 'Usuário'}</span>
+                                    <span className="chat-reply-text">{originalMsg.conteudo?.slice(0, 80) || '...'}</span>
+                                </div>
+                            );
+                        })()}
 
                         {msg.deletada ? (
                             <div className="chat-message-text deleted-text">Mensagem apagada</div>

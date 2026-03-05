@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Shield, User, Users, Percent, Target, Eye, X, Check, Briefcase, Bell, Mail, Calendar, ChevronDown, Sparkles, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Shield, User, Users, Percent, Target, Eye, X, Check, Briefcase, Bell, Mail, Calendar, ChevronDown, Sparkles, AlertTriangle, Server } from 'lucide-react';
 import {
     useUsuarios, createUsuarioViaSignUp, updateUsuario, deleteUsuarioViaEdge, uploadAvatar,
     useFinancialTypes, useFinancialCategories,
@@ -9,7 +9,8 @@ import {
     addFinancialCategory, removeFinancialCategory,
     useNotificationSettings, upsertNotificationSettings,
     useComercialCommissionTiers, addComercialCommissionTier, removeComercialCommissionTier,
-    useSellerGoals, addSellerGoal, removeSellerGoal
+    useSellerGoals, addSellerGoal, removeSellerGoal,
+    useDiretorioFerramentasPredefinidas, addDiretorioFerramentaPredefinida, removeDiretorioFerramentaPredefinida
 } from '@/lib/hooks';
 import type { UsuarioDB } from '@/lib/hooks';
 import { formatCurrencyInput, parseCurrencyInput, AVATAR_COLORS } from '@/lib/utils';
@@ -75,6 +76,7 @@ export default function ConfiguracoesPage() {
     const { data: notifSettings, loading: loadingNotifSettings, refetch: refetchNotifSettings } = useNotificationSettings(user?.id ?? '');
     const { data: comissoes, loading: loadingComissoes, setData: setComissoes } = useComercialCommissionTiers();
     const { data: goals, setData: setGoals, refetch: refetchGoals } = useSellerGoals();
+    const { data: ferramentas, loading: loadingFerramentas, setData: setFerramentas } = useDiretorioFerramentasPredefinidas();
 
     const [modal, setModal] = useState<ModalState>(null);
     const [saving, setSaving] = useState(false);
@@ -84,11 +86,14 @@ export default function ConfiguracoesPage() {
     const isAdminGeral = user?.categoria === 'Admin Geral';
 
     // Tab State
-    const [activeTab, setActiveTab] = useState<'equipe' | 'time_comercial' | 'financas' | 'notificacoes'>('equipe');
+    const [activeTab, setActiveTab] = useState<'equipe' | 'time_comercial' | 'financas' | 'notificacoes' | 'diretorio'>('equipe');
 
     // Finanças State
     const [newType, setNewType] = useState('');
     const [newCategory, setNewCategory] = useState('');
+
+    // Diretório State
+    const [newFerramenta, setNewFerramenta] = useState('');
 
     // Form state — creation (simplified)
     const [formName, setFormName] = useState('');
@@ -348,6 +353,30 @@ export default function ConfiguracoesPage() {
         setSaving(false);
     }
 
+    async function handleAddFerramenta() {
+        if (!newFerramenta.trim() || saving) return;
+        setSaving(true);
+        try {
+            const added = await addDiretorioFerramentaPredefinida({ name: newFerramenta.trim() });
+            setFerramentas([...ferramentas, added]);
+            setNewFerramenta('');
+        } catch (e) {
+            console.error(e);
+        }
+        setSaving(false);
+    }
+
+    async function handleDeleteFerramenta(id: string) {
+        setSaving(true);
+        try {
+            await removeDiretorioFerramentaPredefinida(id);
+            setFerramentas(ferramentas.filter(f => f.id !== id));
+        } catch (e) {
+            console.error(e);
+        }
+        setSaving(false);
+    }
+
     async function handleAddComercialMember() {
         if (!selectedComercialUser) return;
         setSaving(true);
@@ -466,6 +495,9 @@ export default function ConfiguracoesPage() {
                 </button>
                 <button className={`finance-tab ${activeTab === 'financas' ? 'active' : ''}`} onClick={() => setActiveTab('financas')}>
                     <Briefcase size={14} /> Preferências Financeiras
+                </button>
+                <button className={`finance-tab ${activeTab === 'diretorio' ? 'active' : ''}`} onClick={() => setActiveTab('diretorio')}>
+                    <Server size={14} /> Preferências de Diretório
                 </button>
                 <button className={`finance-tab ${activeTab === 'notificacoes' ? 'active' : ''}`} onClick={() => setActiveTab('notificacoes')}>
                     <Bell size={14} /> Notificações
@@ -637,8 +669,8 @@ export default function ConfiguracoesPage() {
                                                     </div>
                                                     <div className="form-group">
                                                         <label className="form-label">Categoria</label>
-                                                        <select className="form-select" value={editCategory} onChange={e => setEditCategory(e.target.value)}>
-                                                            <option value="Admin Geral">Admin Geral</option>
+                                                        <select className="form-select" value={editCategory} onChange={e => setEditCategory(e.target.value)} disabled={editCategory === 'Admin Geral' && !isAdminGeral}>
+                                                            {(isAdminGeral || editCategory === 'Admin Geral') && <option value="Admin Geral">Admin Geral</option>}
                                                             <option value="Administrativa">Administrativa</option>
                                                             <option value="Comercial">Comercial</option>
                                                             <option value="Financeira">Financeira</option>
@@ -1413,6 +1445,54 @@ export default function ConfiguracoesPage() {
                                 {saving ? 'Removendo...' : 'Remover'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB: DIRETÓRIO */}
+            {activeTab === 'diretorio' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)', gap: 32 }}>
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                            <Server size={16} color="var(--brand-primary)" />
+                            <h3 style={{ fontSize: 15, margin: 0 }}>Ferramentas Predefinidas</h3>
+                        </div>
+                        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>
+                            Gerencie a lista de softwares e APIs predefinidas disponíveis ao cadastrar novas assinaturas/custos de clientes no módulo Diretório.
+                        </p>
+
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+                            <input
+                                type="text"
+                                className="form-input"
+                                placeholder="Nova ferramenta..."
+                                value={newFerramenta}
+                                onChange={e => setNewFerramenta(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleAddFerramenta()}
+                            />
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleAddFerramenta}
+                                disabled={saving || !newFerramenta.trim()}
+                                style={{ padding: '0 16px' }}
+                            >
+                                <Plus size={16} />
+                            </button>
+                        </div>
+
+                        {loadingFerramentas ? <div style={{ color: 'var(--text-muted)' }}>Carregando ferramentas...</div> : (
+                            <div className="settings-member-list">
+                                {ferramentas.map(f => (
+                                    <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)', marginBottom: 8 }}>
+                                        <span style={{ fontSize: 14 }}>{f.name}</span>
+                                        <button className="settings-action-btn danger" onClick={() => handleDeleteFerramenta(f.id)} disabled={saving}>
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                                {ferramentas.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>Nenhuma ferramenta configurada.</div>}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

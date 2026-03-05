@@ -109,8 +109,8 @@ export default function ColaboradorModal({
 
             {/* Custom Confirm Dialog */}
             {confirmDialog?.isOpen && (
-                <div className="modal-overlay" style={{ zIndex: 1000, background: 'rgba(0,0,0,0.8)' }}>
-                    <div className="modal-content" style={{ width: 400, padding: 32, textAlign: 'center' }}>
+                <div className="modal-overlay" style={{ zIndex: 1000, background: 'rgba(0,0,0,0.8)' }} onClick={e => { e.stopPropagation(); setConfirmDialog(null); }}>
+                    <div className="modal-content" style={{ width: 400, padding: 32, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                         <AlertCircle size={48} color="var(--danger)" style={{ margin: '0 auto 16px' }} />
                         <h3 style={{ fontSize: 20, marginBottom: 8 }}>Confirmar Exclusão</h3>
                         <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: 14 }}>{confirmDialog.title}</p>
@@ -506,7 +506,53 @@ function DocumentosTab({ colabId, canEdit, showToast, requestConfirm }: any) {
                     <h4 style={{ margin: '0 0 16px', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}><UploadCloud size={16} /> Enviar Documento</h4>
                     <div className="form-group">
                         <label className="form-label">Arquivo</label>
-                        <input type="file" ref={fileInputRef} onChange={e => setSelectedFile(e.target.files?.[0] || null)} style={{ fontSize: 13, background: 'var(--bg-primary)', padding: 8, borderRadius: 6, width: '100%' }} />
+                        <div
+                            onClick={() => fileInputRef.current?.click()}
+                            style={{
+                                cursor: 'pointer',
+                                border: '2px dashed var(--border-default)',
+                                borderRadius: 8,
+                                padding: '24px 16px',
+                                textAlign: 'center',
+                                background: selectedFile ? 'var(--accent-muted)' : 'var(--bg-primary)',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: 8,
+                                borderStyle: selectedFile ? 'solid' : 'dashed',
+                                borderColor: selectedFile ? 'var(--accent)' : 'var(--border-default)'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                                e.currentTarget.style.background = 'var(--bg-hover)';
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!selectedFile) {
+                                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                                    e.currentTarget.style.background = 'var(--bg-primary)';
+                                } else {
+                                    e.currentTarget.style.borderColor = 'var(--accent)';
+                                    e.currentTarget.style.background = 'var(--accent-muted)';
+                                }
+                            }}
+                        >
+                            <UploadCloud size={32} color={selectedFile ? 'var(--accent)' : 'var(--text-muted)'} />
+                            <div style={{ fontSize: 13, fontWeight: 500, color: selectedFile ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                                {selectedFile ? selectedFile.name : 'Clique para escolher um arquivo'}
+                            </div>
+                            {selectedFile && (
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                                </div>
+                            )}
+                        </div>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={e => setSelectedFile(e.target.files?.[0] || null)}
+                            style={{ display: 'none' }}
+                        />
                     </div>
                     <div className="form-group">
                         <label className="form-label">Nome do Documento *</label>

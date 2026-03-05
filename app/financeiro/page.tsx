@@ -5,7 +5,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend, AreaChart, Area, LineChart, Line,
 } from 'recharts';
-import { Plus, Download, Filter, ArrowUpCircle, ArrowDownCircle, Pencil, Trash2, X, Check, CheckCircle, Clock, AlertTriangle, XCircle, CalendarClock, TrendingUp, TrendingDown, FileDown, Sparkles } from 'lucide-react';
+import { Plus, Download, Filter, ArrowUpCircle, ArrowDownCircle, Pencil, Trash2, X, Check, CheckCircle, Clock, AlertTriangle, XCircle, CalendarClock, TrendingUp, TrendingDown, FileDown, Sparkles, Search, Copy, RefreshCw, Receipt } from 'lucide-react';
 import {
     useGoals,
     useFinancialTypes, useFinancialCategories,
@@ -48,12 +48,14 @@ const MONTH_ABBR: Record<string, string> = {
 const PIE_COLORS = ['#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#06B6D4', '#A78BFA', '#F472B6'];
 
 type Tab = 'painel' | 'movimentacoes' | 'planejamento' | 'rentabilidade';
-type SubTabMovimentacoes = 'pendentes' | 'fluxo' | 'historico' | 'impostos' | 'recorrencias';
+type MovFilterQuick = 'todos' | 'futuros' | 'concluidos' | 'recorrentes' | 'impostos';
+type LancamentoTipoModal = 'avulso' | 'recorrente' | 'imposto';
 type SubTabPlanejamento = 'dre' | 'metas';
 
 export default function FinanceiroPage() {
     const [activeTab, setActiveTab] = useState<Tab>('painel');
-    const [activeSubTabMovimentacoes, setActiveSubTabMovimentacoes] = useState<SubTabMovimentacoes>('pendentes');
+    const [movQuickFilter, setMovQuickFilter] = useState<MovFilterQuick>('todos');
+    const [movSearch, setMovSearch] = useState('');
     const [activeSubTabPlanejamento, setActiveSubTabPlanejamento] = useState<SubTabPlanejamento>('dre');
     const { data: transactionsData, loading: loadingTransactions, setData: setTransactionsData, refetch: refetchTransactions } = useFinancialTransactions();
     const { data: goalsData, loading: loadingGoals } = useGoals();
@@ -74,24 +76,13 @@ export default function FinanceiroPage() {
     const [dashYear, setDashYear] = useState<string>('todos');
     const [dashCategoria, setDashCategoria] = useState<string>('todos');
 
-    // Filters for the lancamentos table
-    const [filterMonth, setFilterMonth] = useState<string>('todos');
-    const [filterYear, setFilterYear] = useState<string>('todos');
-    const [filterType, setFilterType] = useState<string>('todos');
-    const [filterClassificacao, setFilterClassificacao] = useState<string>('todos');
-
-    // Taxes filters
-    const [taxStatusFilter, setTaxStatusFilter] = useState<string>('todos');
-    const [taxCategoryFilter, setTaxCategoryFilter] = useState<string>('todos');
-    const [taxMonthFilter, setTaxMonthFilter] = useState<string>('todos');
-    const [taxYearFilter, setTaxYearFilter] = useState<string>('todos');
-
-    // Fluxo de Caixa filters
-    const [fluxoMonth, setFluxoMonth] = useState<string>('todos');
-    const [fluxoYear, setFluxoYear] = useState<string>('todos');
+    // Unified Movimentações filters
+    const [movMonth, setMovMonth] = useState<string>('todos');
+    const [movYear, setMovYear] = useState<string>('todos');
+    const [movCategoria, setMovCategoria] = useState<string>('todos');
 
     // Modal state
-    type TransactionModalState = { type: 'add' } | { type: 'edit'; transaction: FinancialTransaction } | null;
+    type TransactionModalState = { type: 'add' } | { type: 'edit'; transaction: FinancialTransaction } | { type: 'edit_tax'; tax: FinancialTax } | null;
     const [transactionModal, setTransactionModal] = useState<TransactionModalState>(null);
 
     // Form state for Modal
@@ -107,6 +98,8 @@ export default function FinanceiroPage() {
     const [formIsRecurrente, setFormIsRecurrente] = useState(false);
     const [formRecurrenciaTipo, setFormRecurrenciaTipo] = useState<'mensal' | 'semanal' | 'anual'>('mensal');
     const [formRecurrenciaQtd, setFormRecurrenciaQtd] = useState(1);
+    const [formLancamentoTipo, setFormLancamentoTipo] = useState<LancamentoTipoModal>('avulso');
+    const [formCompetencia, setFormCompetencia] = useState('');
 
     // Tax Modal state
     type TaxModalState = { type: 'add' } | { type: 'edit'; tax: FinancialTax } | null;
@@ -186,7 +179,7 @@ export default function FinanceiroPage() {
         } catch (e) { console.error(e); }
     }
 
-    function openAddTransaction() {
+    function openAddTransaction(defaultTipo?: LancamentoTipoModal) {
         setFormTipo('saida');
         setFormStatus('pendente');
         setFormClassificacao('');
@@ -198,6 +191,8 @@ export default function FinanceiroPage() {
         setFormIsRecurrente(false);
         setFormRecurrenciaTipo('mensal');
         setFormRecurrenciaQtd(1);
+        setFormLancamentoTipo(defaultTipo || 'avulso');
+        setFormCompetencia('');
         setTransactionModal({ type: 'add' });
     }
 
@@ -210,7 +205,23 @@ export default function FinanceiroPage() {
         setFormValorDisplay(formatCurrency(Number(t.valor)).replace('R$', '').trim());
         setFormDateVencimento(t.data_vencimento ? t.data_vencimento.split('T')[0] : '');
         setFormDatePagamento(t.data_pagamento ? t.data_pagamento.split('T')[0] : '');
+        setFormLancamentoTipo(t.grupo_recorrencia ? 'recorrente' : 'avulso');
+        setFormCompetencia('');
         setTransactionModal({ type: 'edit', transaction: t });
+    }
+
+    function openEditTaxAsTransaction(tax: FinancialTax) {
+        setFormDescricao(tax.descricao);
+        setFormValorDisplay(formatCurrency(Number(tax.valor)).replace('R$', '').trim());
+        setFormCategoria(tax.categoria);
+        setFormDateVencimento(tax.data_vencimento);
+        setFormDatePagamento(tax.data_pagamento || '');
+        setFormStatus(tax.status === 'Pago' ? 'pago_recebido' : 'pendente');
+        setFormLancamentoTipo('imposto');
+        setFormCompetencia(tax.competencia);
+        setFormTipo('saida');
+        setFormClassificacao('');
+        setTransactionModal({ type: 'edit_tax', tax });
     }
 
     // Auto-open transaction if task_id is in URL (from Chat Mention)
@@ -239,13 +250,45 @@ export default function FinanceiroPage() {
     }
 
     async function handleSaveTransaction() {
-        if (!formDescricao.trim() || !formValorDisplay) return;
+        if (!formDescricao.trim()) {
+            alert('Por favor, preencha a descrição.');
+            return;
+        }
+
+        const valor = parseValorDisplay(formValorDisplay);
+        if (valor <= 0) {
+            alert('Por favor, informe um valor maior que zero. Note que o sistema formata automaticamente (ex: digite "10000" para R$ 100,00).');
+            return;
+        }
+
+        if (formLancamentoTipo === 'imposto' && !formCompetencia.trim()) {
+            alert('Por favor, informe a competência do imposto.');
+            return;
+        }
+
         setFormSaving(true);
         try {
-            const valor = parseValorDisplay(formValorDisplay);
 
-            if (transactionModal?.type === 'add') {
-                if (formIsRecurrente) {
+            // Handle Imposto type — save to financial_taxes table
+            if (formLancamentoTipo === 'imposto') {
+                const taxData: Omit<FinancialTax, 'id' | 'created_at'> = {
+                    descricao: formDescricao.trim(),
+                    categoria: formCategoria || '',
+                    competencia: formCompetencia || '',
+                    data_vencimento: formDateVencimento,
+                    data_pagamento: formStatus === 'pago_recebido' ? (formDatePagamento || formDateVencimento) : null,
+                    valor,
+                    status: formStatus === 'pago_recebido' ? 'Pago' : 'Pendente',
+                };
+                if (transactionModal?.type === 'edit_tax') {
+                    await updateFinancialTax(transactionModal.tax.id, taxData);
+                } else {
+                    await addFinancialTax(taxData);
+                }
+                refetchTaxes();
+            } else if (transactionModal?.type === 'add') {
+                // Handle Recorrente type
+                if (formLancamentoTipo === 'recorrente') {
                     const baseDate = new Date(formDateVencimento + 'T12:00:00');
                     const grupoId = crypto.randomUUID();
                     for (let i = 0; i < formRecurrenciaQtd; i++) {
@@ -268,6 +311,7 @@ export default function FinanceiroPage() {
                         });
                     }
                 } else {
+                    // Avulso
                     await addFinancialTransaction({
                         descricao: formDescricao.trim(),
                         tipo: formTipo,
@@ -279,6 +323,7 @@ export default function FinanceiroPage() {
                         categoria: formCategoria,
                     });
                 }
+                refetchTransactions();
             } else if (transactionModal?.type === 'edit' && transactionModal.transaction) {
                 await updateFinancialTransaction(transactionModal.transaction.id, {
                     descricao: formDescricao.trim(),
@@ -290,9 +335,9 @@ export default function FinanceiroPage() {
                     classificacao: formClassificacao,
                     categoria: formCategoria,
                 });
+                refetchTransactions();
             }
 
-            refetchTransactions();
             setTransactionModal(null);
         } catch (e) {
             console.error(e);
@@ -779,463 +824,310 @@ export default function FinanceiroPage() {
                 );
             })()}
 
-            {/* ====== ABA MOVIMENTAÇÕES ====== */}
-            {activeTab === 'movimentacoes' && (
-                <>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 24, padding: 4, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', width: 'fit-content' }}>
-                        <button
-                            onClick={() => setActiveSubTabMovimentacoes('pendentes')}
-                            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s', background: activeSubTabMovimentacoes === 'pendentes' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeSubTabMovimentacoes === 'pendentes' ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                        >
-                            Lançamentos futuros
-                        </button>
-                        <button
-                            onClick={() => setActiveSubTabMovimentacoes('historico')}
-                            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s', background: activeSubTabMovimentacoes === 'historico' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeSubTabMovimentacoes === 'historico' ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                        >
-                            Concluídos
-                        </button>
-                        <button
-                            onClick={() => setActiveSubTabMovimentacoes('fluxo')}
-                            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s', background: activeSubTabMovimentacoes === 'fluxo' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeSubTabMovimentacoes === 'fluxo' ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                        >
-                            Fluxo de Caixa
-                        </button>
-                        <button
-                            onClick={() => setActiveSubTabMovimentacoes('impostos')}
-                            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s', background: activeSubTabMovimentacoes === 'impostos' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeSubTabMovimentacoes === 'impostos' ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                        >
-                            Impostos
-                        </button>
-                        <button
-                            onClick={() => setActiveSubTabMovimentacoes('recorrencias')}
-                            style={{ padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s', background: activeSubTabMovimentacoes === 'recorrencias' ? 'rgba(255,255,255,0.1)' : 'transparent', color: activeSubTabMovimentacoes === 'recorrencias' ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                        >
-                            Recorrências
-                        </button>
-                    </div>
+            {/* ====== ABA MOVIMENTAÇÕES UNIFICADA ====== */}
+            {activeTab === 'movimentacoes' && (() => {
+                const today = getBahiaDateString();
+                const in30days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-                    {/* --- Sub-Aba Recorrências --- */}
-                    {activeSubTabMovimentacoes === 'recorrencias' && (() => {
-                        const filtered = transactionsData.filter(item => {
-                            if (!item.grupo_recorrencia) return false;
-                            const d = new Date(item.data_vencimento);
-                            const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
-                            const itemYear = String(d.getFullYear());
-                            if (filterMonth !== 'todos' && itemMonth !== filterMonth) return false;
-                            if (filterYear !== 'todos' && itemYear !== filterYear) return false;
-                            if (filterType !== 'todos' && item.tipo !== filterType) return false;
-                            if (filterClassificacao !== 'todos' && item.classificacao !== filterClassificacao) return false;
-                            return true;
-                        }).sort((a, b) => new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime());
+                // Build unified items from transactions + taxes
+                type UnifiedItem = {
+                    id: string;
+                    source: 'transaction' | 'tax';
+                    descricao: string;
+                    valor: number;
+                    tipo: 'entrada' | 'saida';
+                    data_vencimento: string;
+                    data_pagamento: string | null;
+                    status: string;
+                    classificacao?: string;
+                    categoria?: string;
+                    isRecorrente: boolean;
+                    recorrencia?: string;
+                    isImposto: boolean;
+                    competencia?: string;
+                    rawTransaction?: FinancialTransaction;
+                    rawTax?: FinancialTax;
+                };
 
-                        return (
-                            <>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-                                    <button className="btn btn-primary" onClick={openAddTransaction} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <Plus size={16} /> Nova Movimentação
+                const unifiedItems: UnifiedItem[] = [
+                    ...transactionsData.map(t => ({
+                        id: t.id,
+                        source: 'transaction' as const,
+                        descricao: t.descricao,
+                        valor: Number(t.valor),
+                        tipo: t.tipo,
+                        data_vencimento: t.data_vencimento,
+                        data_pagamento: t.data_pagamento,
+                        status: t.status,
+                        classificacao: t.classificacao,
+                        categoria: t.categoria,
+                        isRecorrente: !!t.grupo_recorrencia,
+                        recorrencia: t.recorrencia,
+                        isImposto: false,
+                        rawTransaction: t,
+                    })),
+                    ...taxesData.map(t => ({
+                        id: `tax_${t.id}`,
+                        source: 'tax' as const,
+                        descricao: t.descricao,
+                        valor: Number(t.valor),
+                        tipo: 'saida' as const,
+                        data_vencimento: t.data_vencimento,
+                        data_pagamento: t.data_pagamento,
+                        status: t.status === 'Pago' ? 'pago_recebido' : 'pendente',
+                        classificacao: undefined,
+                        categoria: t.categoria,
+                        isRecorrente: false,
+                        isImposto: true,
+                        competencia: t.competencia,
+                        rawTax: t,
+                    })),
+                ];
+
+                // Apply quick filter
+                let filtered = unifiedItems;
+                if (movQuickFilter === 'futuros') filtered = filtered.filter(i => i.status !== 'pago_recebido' && !i.isImposto);
+                else if (movQuickFilter === 'concluidos') filtered = filtered.filter(i => i.status === 'pago_recebido' && !i.isImposto);
+                else if (movQuickFilter === 'recorrentes') filtered = filtered.filter(i => i.isRecorrente);
+                else if (movQuickFilter === 'impostos') filtered = filtered.filter(i => i.isImposto);
+
+                // Apply period filter
+                if (movMonth !== 'todos' || movYear !== 'todos') {
+                    filtered = filtered.filter(item => {
+                        const d = new Date(item.data_vencimento);
+                        const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
+                        const itemYear = String(d.getFullYear());
+                        if (movMonth !== 'todos' && itemMonth !== movMonth) return false;
+                        if (movYear !== 'todos' && itemYear !== movYear) return false;
+                        return true;
+                    });
+                }
+
+                // Apply categoria filter
+                if (movCategoria !== 'todos') {
+                    filtered = filtered.filter(i => i.categoria === movCategoria);
+                }
+
+                // Apply search
+                if (movSearch.trim()) {
+                    const search = movSearch.toLowerCase();
+                    filtered = filtered.filter(i => i.descricao.toLowerCase().includes(search) || (i.categoria || '').toLowerCase().includes(search));
+                }
+
+                // Sort by date (most recent first for completed, soonest first for pending)
+                filtered.sort((a, b) => {
+                    const dateA = a.status === 'pago_recebido' ? (a.data_pagamento || a.data_vencimento) : a.data_vencimento;
+                    const dateB = b.status === 'pago_recebido' ? (b.data_pagamento || b.data_vencimento) : b.data_vencimento;
+                    return new Date(dateA).getTime() - new Date(dateB).getTime();
+                });
+
+                // Summary calculations
+                const pendingItems = unifiedItems.filter(i => i.status !== 'pago_recebido');
+                const completedItems = unifiedItems.filter(i => i.status === 'pago_recebido');
+                const totalPrevisto = pendingItems.reduce((s, i) => s + i.valor, 0);
+                const totalRealizado = completedItems.reduce((s, i) => s + i.valor, 0);
+                const saldoRealizado = completedItems.filter(i => i.tipo === 'entrada').reduce((s, i) => s + i.valor, 0) - completedItems.filter(i => i.tipo === 'saida').reduce((s, i) => s + i.valor, 0);
+                const proxRecorrencias = unifiedItems.filter(i => i.isRecorrente && i.status !== 'pago_recebido' && i.data_vencimento >= today && i.data_vencimento <= in30days).length;
+
+                // All unique categories for filter
+                const allCategories = Array.from(new Set(unifiedItems.map(i => i.categoria).filter(Boolean))).sort();
+
+                // Type badge helper
+                function TypeBadge({ item }: { item: UnifiedItem }) {
+                    if (item.isImposto) return <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: '0.5px', background: '#EC489922', color: '#EC4899' }}>IMPOSTO</span>;
+                    if (item.isRecorrente) return <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: '0.5px', background: '#8B5CF622', color: '#8B5CF6' }}>RECORRENTE</span>;
+                    return <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: '0.5px', background: '#3B82F622', color: '#3B82F6' }}>AVULSO</span>;
+                }
+
+                function StatusBadge({ item }: { item: UnifiedItem }) {
+                    const isPaid = item.status === 'pago_recebido';
+                    const isOverdue = !isPaid && item.data_vencimento < today;
+                    const isDueSoon = !isPaid && !isOverdue && item.data_vencimento <= in30days;
+                    if (isPaid) return <span className="status-badge success">Pago</span>;
+                    if (isOverdue) return <span className="status-badge" style={{ background: '#EF444422', color: '#EF4444' }}>Vencido</span>;
+                    if (isDueSoon) return <span className="status-badge warning">Próximo</span>;
+                    return <span className="status-badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}>Pendente</span>;
+                }
+
+                const quickFilters: { key: MovFilterQuick; label: string }[] = [
+                    { key: 'todos', label: 'Todos' },
+                    { key: 'futuros', label: 'Futuros' },
+                    { key: 'concluidos', label: 'Concluídos' },
+                    { key: 'recorrentes', label: 'Recorrentes' },
+                    { key: 'impostos', label: 'Impostos' },
+                ];
+
+                async function handleQuickPay(item: UnifiedItem) {
+                    try {
+                        if (item.source === 'tax' && item.rawTax) {
+                            await updateFinancialTax(item.rawTax.id, { ...item.rawTax, status: 'Pago', data_pagamento: getBahiaDateString() });
+                            refetchTaxes();
+                        } else if (item.rawTransaction) {
+                            await updateFinancialTransaction(item.rawTransaction.id, { status: 'pago_recebido', data_pagamento: getBahiaDateString() });
+                            refetchTransactions();
+                        }
+                    } catch (e) { console.error(e); }
+                }
+
+                async function handleDuplicate(item: UnifiedItem) {
+                    try {
+                        if (item.source === 'tax' && item.rawTax) {
+                            await addFinancialTax({ descricao: item.rawTax.descricao, categoria: item.rawTax.categoria, competencia: item.rawTax.competencia, data_vencimento: getBahiaDateString(), data_pagamento: null, valor: item.rawTax.valor, status: 'Pendente' });
+                            refetchTaxes();
+                        } else if (item.rawTransaction) {
+                            const t = item.rawTransaction;
+                            await addFinancialTransaction({ descricao: t.descricao, tipo: t.tipo, valor: Number(t.valor), data_vencimento: getBahiaDateString(), data_pagamento: null, status: 'pendente', classificacao: t.classificacao, categoria: t.categoria });
+                            refetchTransactions();
+                        }
+                    } catch (e) { console.error(e); }
+                }
+
+                function handleEdit(item: UnifiedItem) {
+                    if (item.source === 'tax' && item.rawTax) openEditTaxAsTransaction(item.rawTax);
+                    else if (item.rawTransaction) openEditTransaction(item.rawTransaction);
+                }
+
+                function handleDelete(item: UnifiedItem) {
+                    if (item.source === 'tax' && item.rawTax) {
+                        setDeleteConfirm({ isOpen: true, targetId: item.rawTax.id, type: 'tax', title: item.descricao });
+                    } else {
+                        setDeleteConfirm({ isOpen: true, targetId: item.rawTransaction!.id, type: 'transaction', title: item.descricao });
+                    }
+                }
+
+                return (
+                    <>
+                        {/* Summary KPIs */}
+                        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 24 }}>
+                            <div className="kpi-card">
+                                <div className="kpi-card-value" style={{ color: 'var(--warning)' }}>{formatCurrency(totalPrevisto)}</div>
+                                <div className="kpi-card-label">Total Previsto (Pendente)</div>
+                            </div>
+                            <div className="kpi-card">
+                                <div className="kpi-card-value" style={{ color: 'var(--success)' }}>{formatCurrency(totalRealizado)}</div>
+                                <div className="kpi-card-label">Total Realizado</div>
+                            </div>
+                            <div className="kpi-card">
+                                <div className="kpi-card-value" style={{ color: saldoRealizado >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatCurrency(saldoRealizado)}</div>
+                                <div className="kpi-card-label">Saldo Realizado</div>
+                            </div>
+                            <div className="kpi-card">
+                                <div className="kpi-card-value" style={{ color: '#8B5CF6' }}>{proxRecorrencias}</div>
+                                <div className="kpi-card-label">Recorrências (próx. 30d)</div>
+                            </div>
+                        </div>
+
+                        {/* Filter Bar */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+                            {/* Quick Filter Pills */}
+                            <div style={{ display: 'flex', gap: 6, padding: 4, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
+                                {quickFilters.map(f => (
+                                    <button
+                                        key={f.key}
+                                        onClick={() => setMovQuickFilter(f.key)}
+                                        style={{
+                                            padding: '8px 16px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer',
+                                            borderRadius: 8, transition: 'all 0.2s',
+                                            background: movQuickFilter === f.key ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            color: movQuickFilter === f.key ? 'var(--text-primary)' : 'var(--text-muted)',
+                                        }}
+                                    >
+                                        {f.label}
                                     </button>
-                                </div>
-                                <div className="table-card">
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                                        <div className="table-card-title" style={{ marginBottom: 0 }}>Gestão de Recorrências</div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
-                                            <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-                                            <select className="form-select" style={{ minWidth: 130, background: 'transparent', border: 'none', fontSize: 13 }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
-                                                <option value="todos">Mês</option>
-                                                {MONTH_ORDER.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                                            </select>
-                                            <select className="form-select" style={{ minWidth: 90, background: 'transparent', border: 'none', fontSize: 13 }} value={filterYear} onChange={e => setFilterYear(e.target.value)}>
-                                                <option value="todos">Ano</option>
-                                                {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
-                                            </select>
-                                            <select className="form-select" style={{ minWidth: 120, background: 'transparent', border: 'none', fontSize: 13 }} value={filterType} onChange={e => setFilterType(e.target.value)}>
-                                                <option value="todos">Fluxo</option>
-                                                <option value="entrada">Entrada</option>
-                                                <option value="saida">Saída</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Vencimento</th>
-                                                <th>Descrição</th>
-                                                <th>Classificação</th>
-                                                <th>Peridiocidade</th>
-                                                <th>Status</th>
-                                                <th>Valor</th>
-                                                <th style={{ width: 80 }}></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filtered.length === 0 && (
-                                                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>Nenhuma recorrência encontrada.</td></tr>
-                                            )}
-                                            {filtered.map(item => (
-                                                <tr key={item.id}>
-                                                    <td>{new Date(item.data_vencimento).toLocaleDateString('pt-BR')}</td>
-                                                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
-                                                    <td>{item.classificacao || '—'}</td>
-                                                    <td style={{ textTransform: 'capitalize' }}>{item.recorrencia || 'mensal'}</td>
-                                                    <td>
-                                                        <span className={`status-badge ${item.status === 'pago_recebido' ? 'success' : 'warning'}`}>
-                                                            {item.status === 'pago_recebido' ? 'Pago/Recebido' : 'Pendente'}
-                                                        </span>
-                                                    </td>
-                                                    <td className={item.tipo === 'entrada' ? 'positive' : 'negative'}>{item.tipo === 'entrada' ? '+' : '-'}{formatCurrency(Number(item.valor))}</td>
-                                                    <td>
-                                                        <div style={{ display: 'flex', gap: 4 }}>
-                                                            <button className="settings-action-btn" onClick={() => openEditTransaction(item)} title="Editar"><Pencil size={13} /></button>
-                                                            <button className="settings-action-btn danger" onClick={() => handleDeleteTransaction(item.id)} title="Excluir"><Trash2 size={13} /></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </>
-                        );
-                    })()}
+                                ))}
+                            </div>
 
-                    {/* --- Sub-Aba Pendentes --- */}
-                    {activeSubTabMovimentacoes === 'pendentes' && (() => {
-                        const filtered = transactionsData.filter(item => {
-                            if (item.status === 'pago_recebido') return false;
-                            const d = new Date(item.data_vencimento);
-                            const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
-                            const itemYear = String(d.getFullYear());
-                            if (filterMonth !== 'todos' && itemMonth !== filterMonth) return false;
-                            if (filterYear !== 'todos' && itemYear !== filterYear) return false;
-                            if (filterType !== 'todos' && item.tipo !== filterType) return false;
-                            if (filterClassificacao !== 'todos' && item.classificacao !== filterClassificacao) return false;
-                            return true;
-                        }).sort((a, b) => new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime());
+                            <button className="btn btn-primary" onClick={() => openAddTransaction()} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Plus size={16} /> Novo Lançamento
+                            </button>
+                        </div>
 
-                        return (
-                            <>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-                                    <button className="btn btn-primary" onClick={openAddTransaction} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <Plus size={16} /> Nova Movimentação
-                                    </button>
+                        {/* Search + Period + Categoria */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+                            <div style={{ position: 'relative', flex: '1 1 250px', maxWidth: 350 }}>
+                                <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <input
+                                    className="form-input"
+                                    placeholder="Buscar por descrição ou categoria..."
+                                    value={movSearch}
+                                    onChange={e => setMovSearch(e.target.value)}
+                                    style={{ paddingLeft: 34, fontSize: 13 }}
+                                />
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <Filter size={14} style={{ color: 'var(--text-muted)' }} />
+                                <select className="form-select" style={{ minWidth: 120, background: 'transparent', border: 'none', fontSize: 13 }} value={movMonth} onChange={e => setMovMonth(e.target.value)}>
+                                    <option value="todos">Mês</option>
+                                    {MONTH_ORDER.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                                </select>
+                                <select className="form-select" style={{ minWidth: 90, background: 'transparent', border: 'none', fontSize: 13 }} value={movYear} onChange={e => setMovYear(e.target.value)}>
+                                    <option value="todos">Ano</option>
+                                    {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                                <select className="form-select" style={{ minWidth: 130, background: 'transparent', border: 'none', fontSize: 13 }} value={movCategoria} onChange={e => setMovCategoria(e.target.value)}>
+                                    <option value="todos">Categoria</option>
+                                    {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Unified Table */}
+                        <div className="table-card">
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                                <div className="table-card-title" style={{ marginBottom: 0 }}>
+                                    {movQuickFilter === 'todos' ? 'Todas as Movimentações' : movQuickFilter === 'futuros' ? 'Lançamentos Futuros' : movQuickFilter === 'concluidos' ? 'Lançamentos Concluídos' : movQuickFilter === 'recorrentes' ? 'Recorrências' : 'Impostos'}
+                                    <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 13, marginLeft: 8 }}>({filtered.length})</span>
                                 </div>
-                                <div className="table-card">
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                                        <div className="table-card-title" style={{ marginBottom: 0 }}>Lançamentos Futuros</div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
-                                            <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-                                            <select className="form-select" style={{ minWidth: 130, background: 'transparent', border: 'none', fontSize: 13 }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
-                                                <option value="todos">Mês</option>
-                                                {MONTH_ORDER.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                                            </select>
-                                            <select className="form-select" style={{ minWidth: 90, background: 'transparent', border: 'none', fontSize: 13 }} value={filterYear} onChange={e => setFilterYear(e.target.value)}>
-                                                <option value="todos">Ano</option>
-                                                {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
-                                            </select>
-                                            <select className="form-select" style={{ minWidth: 120, background: 'transparent', border: 'none', fontSize: 13 }} value={filterType} onChange={e => setFilterType(e.target.value)}>
-                                                <option value="todos">Fluxo</option>
-                                                <option value="entrada">Entrada</option>
-                                                <option value="saida">Saída</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Vencimento</th>
-                                                <th>Descrição</th>
-                                                <th>Classificação</th>
-                                                <th>Categoria</th>
-                                                <th>Fluxo</th>
-                                                <th>Valor</th>
-                                                <th style={{ width: 80 }}></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filtered.length === 0 && (
-                                                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>Nenhum lançamento encontrado.</td></tr>
-                                            )}
-                                            {filtered.map(item => (
-                                                <tr key={item.id}>
-                                                    <td>{new Date(item.data_vencimento).toLocaleDateString('pt-BR')}</td>
-                                                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
-                                                    <td>{item.classificacao || '—'}</td>
-                                                    <td>{item.categoria || '—'}</td>
-                                                    <td>
-                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: item.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                                                            {item.tipo === 'entrada' ? <ArrowUpCircle size={14} /> : <ArrowDownCircle size={14} />}
-                                                            {item.tipo === 'entrada' ? 'RE' : 'DP'}
-                                                        </span>
-                                                    </td>
-                                                    <td className={item.tipo === 'entrada' ? 'positive' : 'negative'}>{item.tipo === 'entrada' ? '+' : '-'}{formatCurrency(Number(item.valor))}</td>
-                                                    <td>
-                                                        <div style={{ display: 'flex', gap: 4 }}>
-                                                            <button className="settings-action-btn" onClick={() => openEditTransaction(item)} title="Editar"><Pencil size={13} /></button>
-                                                            <button className="settings-action-btn danger" onClick={() => handleDeleteTransaction(item.id)} title="Excluir"><Trash2 size={13} /></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </>
-                        );
-                    })()}
-
-                    {/* --- Sub-Aba Histórico --- */}
-                    {activeSubTabMovimentacoes === 'historico' && (() => {
-                        const filtered = transactionsData.filter(item => {
-                            if (item.status !== 'pago_recebido') return false;
-                            const d = new Date(item.data_pagamento || item.data_vencimento);
-                            const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
-                            const itemYear = String(d.getFullYear());
-                            if (filterMonth !== 'todos' && itemMonth !== filterMonth) return false;
-                            if (filterYear !== 'todos' && itemYear !== filterYear) return false;
-                            if (filterType !== 'todos' && item.tipo !== filterType) return false;
-                            return true;
-                        }).sort((a, b) => new Date(b.data_pagamento || b.data_vencimento).getTime() - new Date(a.data_pagamento || a.data_vencimento).getTime());
-
-                        return (
-                            <>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-                                    <button className="btn btn-primary" onClick={openAddTransaction} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <Plus size={16} /> Nova Movimentação
-                                    </button>
-                                </div>
-                                <div className="table-card">
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                                        <div className="table-card-title" style={{ marginBottom: 0 }}>Concluídos</div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
-                                            <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-                                            <select className="form-select" style={{ minWidth: 130, background: 'transparent', border: 'none', fontSize: 13 }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
-                                                <option value="todos">Mês</option>
-                                                {MONTH_ORDER.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                                            </select>
-                                            <select className="form-select" style={{ minWidth: 90, background: 'transparent', border: 'none', fontSize: 13 }} value={filterYear} onChange={e => setFilterYear(e.target.value)}>
-                                                <option value="todos">Ano</option>
-                                                {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Pagamento</th>
-                                                <th>Descrição</th>
-                                                <th>Classificação</th>
-                                                <th>Fluxo</th>
-                                                <th>Valor</th>
-                                                <th style={{ width: 80 }}></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filtered.length === 0 && (
-                                                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>Nenhum lançamento concluído.</td></tr>
-                                            )}
-                                            {filtered.map(item => (
-                                                <tr key={item.id}>
-                                                    <td>{new Date(item.data_pagamento || item.data_vencimento).toLocaleDateString('pt-BR')}</td>
-                                                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
-                                                    <td>{item.classificacao || '—'}</td>
-                                                    <td>
-                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: item.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                                                            {item.tipo === 'entrada' ? <ArrowUpCircle size={14} /> : <ArrowDownCircle size={14} />}
-                                                            {item.tipo === 'entrada' ? 'RE' : 'DP'}
-                                                        </span>
-                                                    </td>
-                                                    <td className={item.tipo === 'entrada' ? 'positive' : 'negative'}>{item.tipo === 'entrada' ? '+' : '-'}{formatCurrency(Number(item.valor))}</td>
-                                                    <td>
-                                                        <div style={{ display: 'flex', gap: 4 }}>
-                                                            <button className="settings-action-btn" onClick={() => openEditTransaction(item)} title="Editar"><Pencil size={13} /></button>
-                                                            <button className="settings-action-btn danger" onClick={() => handleDeleteTransaction(item.id)} title="Excluir"><Trash2 size={13} /></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </>
-                        );
-                    })()}
-
-                    {/* --- Sub-Aba Fluxo de Caixa --- */}
-                    {activeSubTabMovimentacoes === 'fluxo' && (() => {
-                        const filtered = transactionsData.filter(item => {
-                            if (item.status !== 'pago_recebido') return false;
-                            const d = new Date(item.data_pagamento || item.data_vencimento);
-                            const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
-                            const itemYear = String(d.getFullYear());
-                            if (fluxoMonth !== 'todos' && itemMonth !== fluxoMonth) return false;
-                            if (fluxoYear !== 'todos' && itemYear !== fluxoYear) return false;
-                            return true;
-                        }).sort((a, b) => new Date(a.data_pagamento || a.data_vencimento).getTime() - new Date(b.data_pagamento || b.data_vencimento).getTime());
-
-                        let running = 0;
-                        const withBalance = filtered.map(item => {
-                            if (item.tipo === 'entrada') running += Number(item.valor);
-                            else running -= Number(item.valor);
-                            return { ...item, balance: running };
-                        });
-
-                        const totalE = filtered.filter(i => i.tipo === 'entrada').reduce((a, b) => a + Number(b.valor), 0);
-                        const totalS = filtered.filter(i => i.tipo === 'saida').reduce((a, b) => a + Number(b.valor), 0);
-                        const net = totalE - totalS;
-
-                        return (
-                            <>
-                                <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 24 }}>
-                                    <div className="kpi-card">
-                                        <div className="kpi-card-value" style={{ color: 'var(--success)' }}>{formatCurrency(totalE)}</div>
-                                        <div className="kpi-card-label">Total Entradas</div>
-                                    </div>
-                                    <div className="kpi-card">
-                                        <div className="kpi-card-value" style={{ color: 'var(--danger)' }}>{formatCurrency(totalS)}</div>
-                                        <div className="kpi-card-label">Total Saídas</div>
-                                    </div>
-                                    <div className="kpi-card">
-                                        <div className="kpi-card-value" style={{ color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatCurrency(net)}</div>
-                                        <div className="kpi-card-label">Saldo do Período</div>
-                                    </div>
-                                </div>
-                                <div className="table-card">
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                                        <div className="table-card-title" style={{ marginBottom: 0 }}>Fluxo de Caixa Operacional</div>
-                                        <div style={{ display: 'flex', gap: 8 }}>
-                                            <select className="form-select" value={fluxoMonth} onChange={e => setFluxoMonth(e.target.value)} style={{ minWidth: 120, background: 'var(--bg-secondary)', border: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-                                                <option value="todos">Mês</option>
-                                                {MONTH_ORDER.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                                            </select>
-                                            <select className="form-select" value={fluxoYear} onChange={e => setFluxoYear(e.target.value)} style={{ minWidth: 90, background: 'var(--bg-secondary)', border: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-                                                <option value="todos">Ano</option>
-                                                {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Data</th>
-                                                <th>Descrição</th>
-                                                <th>Entrada</th>
-                                                <th>Saída</th>
-                                                <th>Saldo</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {withBalance.length === 0 && (
-                                                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>Sem dados para o período.</td></tr>
-                                            )}
-                                            {withBalance.map(item => (
-                                                <tr key={item.id}>
-                                                    <td>{new Date(item.data_pagamento || item.data_vencimento).toLocaleDateString('pt-BR')}</td>
-                                                    <td>{item.descricao}</td>
-                                                    <td className="positive">{item.tipo === 'entrada' ? formatCurrency(Number(item.valor)) : '—'}</td>
-                                                    <td className="negative">{item.tipo === 'saida' ? formatCurrency(Number(item.valor)) : '—'}</td>
-                                                    <td style={{ fontWeight: 600, color: item.balance >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatCurrency(item.balance)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </>
-                        );
-                    })()}
-
-                    {/* --- Sub-Aba Impostos --- */}
-                    {activeSubTabMovimentacoes === 'impostos' && (() => {
-                        const filtered = taxesData.filter(tax => {
-                            const d = new Date(tax.data_vencimento);
-                            const m = String(d.getMonth() + 1).padStart(2, '0');
-                            const y = String(d.getFullYear());
-                            if (taxMonthFilter !== 'todos' && m !== taxMonthFilter) return false;
-                            if (taxYearFilter !== 'todos' && y !== taxYearFilter) return false;
-                            if (taxStatusFilter !== 'todos' && tax.status !== taxStatusFilter) return false;
-                            if (taxCategoryFilter !== 'todos' && tax.categoria !== taxCategoryFilter) return false;
-                            return true;
-                        }).sort((a, b) => new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime());
-
-                        const now = getBahiaDate();
-                        const pendingTotal = taxesData.filter(t => t.status !== 'Pago').reduce((s, t) => s + Number(t.valor), 0);
-                        const overdueCount = taxesData.filter(t => t.status !== 'Pago' && new Date(t.data_vencimento) < now).length;
-
-                        return (
-                            <>
-                                <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 24 }}>
-                                    <div className="kpi-card">
-                                        <div className="kpi-card-value" style={{ color: 'var(--warning)' }}>{formatCurrency(pendingTotal)}</div>
-                                        <div className="kpi-card-label">Total em Aberto</div>
-                                    </div>
-                                    <div className={`kpi-card ${overdueCount > 0 ? 'kpi-card-alert' : ''}`}>
-                                        <div className="kpi-card-value" style={{ color: 'var(--danger)' }}>{overdueCount}</div>
-                                        <div className="kpi-card-label">Impostos Vencidos</div>
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-                                    <button className="btn btn-primary" onClick={openAddTax} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <Plus size={16} /> Novo Imposto
-                                    </button>
-                                </div>
-                                <div className="table-card">
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                                        <div className="table-card-title" style={{ marginBottom: 0 }}>Gestão de Impostos</div>
-                                        <div style={{ display: 'flex', gap: 8 }}>
-                                            <select className="form-select" value={taxStatusFilter} onChange={e => setTaxStatusFilter(e.target.value)} style={{ minWidth: 120, background: 'var(--bg-secondary)', border: '1px solid rgba(255,255,255,0.05)', fontSize: 13 }}>
-                                                <option value="todos">Status</option>
-                                                <option value="Pendente">Pendente</option>
-                                                <option value="Pago">Pago</option>
-                                                <option value="Vencido">Vencido</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Vencimento</th>
-                                                <th>Descrição</th>
-                                                <th>Categoria</th>
-                                                <th>Competência</th>
-                                                <th>Status</th>
-                                                <th>Valor</th>
-                                                <th style={{ width: 80 }}></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filtered.length === 0 && (
-                                                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>Nenhum imposto encontrado.</td></tr>
-                                            )}
-                                            {filtered.map(tax => (
-                                                <tr key={tax.id}>
-                                                    <td>{new Date(tax.data_vencimento).toLocaleDateString('pt-BR')}</td>
-                                                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{tax.descricao}</td>
-                                                    <td>{tax.categoria}</td>
-                                                    <td>{tax.competencia}</td>
-                                                    <td>
-                                                        <span style={{
-                                                            padding: '4px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
-                                                            background: tax.status === 'Pago' ? '#10B98122' : '#F59E0B22',
-                                                            color: tax.status === 'Pago' ? '#10B981' : '#F59E0B'
-                                                        }}>{tax.status}</span>
-                                                    </td>
-                                                    <td style={{ fontWeight: 600 }}>{formatCurrency(Number(tax.valor))}</td>
-                                                    <td>
-                                                        <div style={{ display: 'flex', gap: 4 }}>
-                                                            <button className="settings-action-btn" onClick={() => openEditTax(tax)} title="Editar"><Pencil size={13} /></button>
-                                                            <button className="settings-action-btn danger" onClick={() => handleDeleteTax(tax.id)} title="Excluir"><Trash2 size={13} /></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </>
-                        );
-                    })()}
-                </>
-            )}
+                            </div>
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Descrição</th>
+                                        <th>Tipo</th>
+                                        <th>Status</th>
+                                        <th>Categoria</th>
+                                        <th>Fluxo</th>
+                                        <th>Valor</th>
+                                        <th style={{ width: 120 }}></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filtered.length === 0 && (
+                                        <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>Nenhum lançamento encontrado.</td></tr>
+                                    )}
+                                    {filtered.map(item => (
+                                        <tr key={item.id}>
+                                            <td>{new Date(item.status === 'pago_recebido' && item.data_pagamento ? item.data_pagamento : item.data_vencimento).toLocaleDateString('pt-BR')}</td>
+                                            <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
+                                            <td><TypeBadge item={item} /></td>
+                                            <td><StatusBadge item={item} /></td>
+                                            <td>{item.categoria || '—'}</td>
+                                            <td>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: item.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                                                    {item.tipo === 'entrada' ? <ArrowUpCircle size={14} /> : <ArrowDownCircle size={14} />}
+                                                    {item.tipo === 'entrada' ? 'RE' : 'DP'}
+                                                </span>
+                                            </td>
+                                            <td className={item.tipo === 'entrada' ? 'positive' : 'negative'}>{item.tipo === 'entrada' ? '+' : '-'}{formatCurrency(item.valor)}</td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                    {item.status !== 'pago_recebido' && (
+                                                        <button className="settings-action-btn" onClick={() => handleQuickPay(item)} title="Marcar como Pago" style={{ color: 'var(--success)' }}><CheckCircle size={13} /></button>
+                                                    )}
+                                                    <button className="settings-action-btn" onClick={() => handleEdit(item)} title="Editar"><Pencil size={13} /></button>
+                                                    <button className="settings-action-btn" onClick={() => handleDuplicate(item)} title="Duplicar"><Copy size={13} /></button>
+                                                    <button className="settings-action-btn danger" onClick={() => handleDelete(item)} title="Excluir"><Trash2 size={13} /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                );
+            })()}
 
             {/* ====== ABA PLANEJAMENTO ====== */}
             {
@@ -1323,65 +1215,87 @@ export default function FinanceiroPage() {
             }
 
             {/* ====== ABA RENTABILIDADE ====== */}
-            {activeTab === 'rentabilidade' && (() => {
-                const activeClients = clients.filter(c => c.status !== 'Inativo');
-                const rentabilityData = activeClients.map(c => {
-                    const receita = c.monthly_fee || 0;
-                    const custoTotal = (c.hosting_cost || 0) + (c.db_cost || 0) + ((c.hour_value || 0) * (c.operational_hours || 0));
-                    const margemBruta = receita - custoTotal;
-                    const margemPerc = receita > 0 ? (margemBruta / receita) * 100 : 0;
-                    return { id: c.id, name: c.name, receita, custoTotal, margemBruta, margemPerc };
-                }).sort((a, b) => b.margemBruta - a.margemBruta);
+            {
+                activeTab === 'rentabilidade' && (() => {
+                    const activeClients = clients.filter(c => c.status !== 'Inativo');
+                    const rentabilityData = activeClients.map(c => {
+                        const receita = c.monthly_fee || 0;
+                        const custoTotal = (c.hosting_cost || 0) + (c.db_cost || 0) + ((c.hour_value || 0) * (c.operational_hours || 0));
+                        const margemBruta = receita - custoTotal;
+                        const margemPerc = receita > 0 ? (margemBruta / receita) * 100 : 0;
+                        return { id: c.id, name: c.name, receita, custoTotal, margemBruta, margemPerc };
+                    }).sort((a, b) => b.margemBruta - a.margemBruta);
 
-                const totalR = rentabilityData.reduce((s, c) => s + c.receita, 0);
-                const totalC = rentabilityData.reduce((s, c) => s + c.custoTotal, 0);
-                const totalM = totalR - totalC;
+                    const totalR = rentabilityData.reduce((s, c) => s + c.receita, 0);
+                    const totalC = rentabilityData.reduce((s, c) => s + c.custoTotal, 0);
+                    const totalM = totalR - totalC;
 
-                return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                            <div className="kpi-card"><div className="kpi-card-value text-success">{formatCurrency(totalR)}</div><div className="kpi-card-label">Receita Estimada</div></div>
-                            <div className="kpi-card"><div className="kpi-card-value text-danger">{formatCurrency(totalC)}</div><div className="kpi-card-label">Custo Operacional</div></div>
-                            <div className="kpi-card"><div className="kpi-card-value">{formatCurrency(totalM)}</div><div className="kpi-card-label">Lucro Bruto</div></div>
+                    return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                            <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                                <div className="kpi-card"><div className="kpi-card-value text-success">{formatCurrency(totalR)}</div><div className="kpi-card-label">Receita Estimada</div></div>
+                                <div className="kpi-card"><div className="kpi-card-value text-danger">{formatCurrency(totalC)}</div><div className="kpi-card-label">Custo Operacional</div></div>
+                                <div className="kpi-card"><div className="kpi-card-value">{formatCurrency(totalM)}</div><div className="kpi-card-label">Lucro Bruto</div></div>
+                            </div>
+                            <div className="table-card">
+                                <div className="table-card-title">Rentabilidade por Cliente</div>
+                                <table className="data-table">
+                                    <thead><tr><th>Cliente</th><th>Receita</th><th>Custo</th><th>Margem</th><th>%</th></tr></thead>
+                                    <tbody>
+                                        {rentabilityData.map(c => (
+                                            <tr key={c.id}>
+                                                <td style={{ fontWeight: 500 }}>{c.name}</td>
+                                                <td>{formatCurrency(c.receita)}</td>
+                                                <td className="negative">-{formatCurrency(c.custoTotal)}</td>
+                                                <td style={{ fontWeight: 600 }} className={c.margemBruta >= 0 ? 'positive' : 'negative'}>{formatCurrency(c.margemBruta)}</td>
+                                                <td>{c.margemPerc.toFixed(1)}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div className="table-card">
-                            <div className="table-card-title">Rentabilidade por Cliente</div>
-                            <table className="data-table">
-                                <thead><tr><th>Cliente</th><th>Receita</th><th>Custo</th><th>Margem</th><th>%</th></tr></thead>
-                                <tbody>
-                                    {rentabilityData.map(c => (
-                                        <tr key={c.id}>
-                                            <td style={{ fontWeight: 500 }}>{c.name}</td>
-                                            <td>{formatCurrency(c.receita)}</td>
-                                            <td className="negative">-{formatCurrency(c.custoTotal)}</td>
-                                            <td style={{ fontWeight: 600 }} className={c.margemBruta >= 0 ? 'positive' : 'negative'}>{formatCurrency(c.margemBruta)}</td>
-                                            <td>{c.margemPerc.toFixed(1)}%</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                );
-            })()}
+                    );
+                })()
+            }
 
-            {/* ====== MODALS ====== */}
+            {/* ====== MODAL UNIFICADO ====== */}
             {transactionModal && (
                 <div className="settings-modal-overlay" onClick={() => setTransactionModal(null)}>
-                    <div className="settings-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, padding: 0, overflow: 'hidden' }}>
+                    <div className="settings-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520, padding: 0, overflow: 'hidden' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 28px', borderBottom: '1px solid var(--border-default)', background: 'var(--bg-secondary)' }}>
-                            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{transactionModal.type === 'add' ? 'Nova Movimentação' : 'Editar Movimentação'}</h3>
-                            <button onClick={() => setTransactionModal(null)} style={{ background: 'var(--bg-tertiary)', border: 'none', color: 'var(--text-muted)', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifySelf: 'center', cursor: 'pointer', transition: 'all 0.2s', padding: 0, justifyContent: 'center' }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)', e.currentTarget.style.background = 'var(--bg-hover)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)', e.currentTarget.style.background = 'var(--bg-tertiary)')}><X size={18} /></button>
+                            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{transactionModal.type === 'add' ? 'Novo Lançamento' : 'Editar Lançamento'}</h3>
+                            <button onClick={() => setTransactionModal(null)} style={{ background: 'var(--bg-tertiary)', border: 'none', color: 'var(--text-muted)', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', padding: 0 }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)', e.currentTarget.style.background = 'var(--bg-hover)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)', e.currentTarget.style.background = 'var(--bg-tertiary)')}><X size={18} /></button>
                         </div>
-                        <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-                            <div style={{ display: 'flex', background: 'var(--bg-tertiary)', padding: 4, borderRadius: 12, border: '1px solid var(--border-default)' }}>
-                                <button onClick={() => setFormTipo('saida')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: formTipo === 'saida' ? 'var(--danger)' : 'transparent', color: formTipo === 'saida' ? '#fff' : 'var(--text-muted)', fontWeight: 600, transition: 'all 0.2s', cursor: 'pointer' }}>Saída</button>
-                                <button onClick={() => setFormTipo('entrada')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: formTipo === 'entrada' ? 'var(--success)' : 'transparent', color: formTipo === 'entrada' ? '#fff' : 'var(--text-muted)', fontWeight: 600, transition: 'all 0.2s', cursor: 'pointer' }}>Entrada</button>
-                            </div>
+                        <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: 20, maxHeight: '70vh', overflowY: 'auto' }}>
+
+                            {/* Type Selector - only on Add */}
+                            {transactionModal.type === 'add' && (
+                                <div style={{ display: 'flex', background: 'var(--bg-tertiary)', padding: 4, borderRadius: 12, border: '1px solid var(--border-default)' }}>
+                                    {([['avulso', 'Avulso'], ['recorrente', 'Recorrente'], ['imposto', 'Imposto']] as const).map(([key, label]) => (
+                                        <button key={key} onClick={() => setFormLancamentoTipo(key)}
+                                            style={{
+                                                flex: 1, padding: '10px', borderRadius: 8, border: 'none',
+                                                background: formLancamentoTipo === key ? (key === 'avulso' ? '#3B82F6' : key === 'recorrente' ? '#8B5CF6' : '#EC4899') : 'transparent',
+                                                color: formLancamentoTipo === key ? '#fff' : 'var(--text-muted)',
+                                                fontWeight: 600, transition: 'all 0.2s', cursor: 'pointer', fontSize: 13
+                                            }}>
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {/* Fluxo toggle (Avulso & Recorrente only) */}
+                            {formLancamentoTipo !== 'imposto' && (
+                                <div style={{ display: 'flex', background: 'var(--bg-tertiary)', padding: 4, borderRadius: 12, border: '1px solid var(--border-default)' }}>
+                                    <button onClick={() => setFormTipo('saida')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: formTipo === 'saida' ? 'var(--danger)' : 'transparent', color: formTipo === 'saida' ? '#fff' : 'var(--text-muted)', fontWeight: 600, transition: 'all 0.2s', cursor: 'pointer' }}>Saída</button>
+                                    <button onClick={() => setFormTipo('entrada')} style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: formTipo === 'entrada' ? 'var(--success)' : 'transparent', color: formTipo === 'entrada' ? '#fff' : 'var(--text-muted)', fontWeight: 600, transition: 'all 0.2s', cursor: 'pointer' }}>Entrada</button>
+                                </div>
+                            )}
 
                             <div className="form-group">
                                 <label className="form-label">Descrição</label>
-                                <input className="form-input" value={formDescricao} onChange={e => setFormDescricao(e.target.value)} placeholder="Ex: Pagamento Aluguel" />
+                                <input className="form-input" value={formDescricao} onChange={e => setFormDescricao(e.target.value)} placeholder={formLancamentoTipo === 'imposto' ? 'Ex: Simples Nacional' : 'Ex: Pagamento Aluguel'} />
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -1395,23 +1309,41 @@ export default function FinanceiroPage() {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                                <div className="form-group">
-                                    <label className="form-label">Classificação</label>
-                                    <select className="form-select" value={formClassificacao} onChange={e => setFormClassificacao(e.target.value)}>
-                                        <option value="">Selecione...</option>
-                                        {dbTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                                    </select>
+                            {/* Classificação + Categoria (Avulso & Recorrente) */}
+                            {formLancamentoTipo !== 'imposto' && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                    <div className="form-group">
+                                        <label className="form-label">Classificação</label>
+                                        <select className="form-select" value={formClassificacao} onChange={e => setFormClassificacao(e.target.value)}>
+                                            <option value="">Selecione...</option>
+                                            {dbTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Categoria</label>
+                                        <select className="form-select" value={formCategoria} onChange={e => setFormCategoria(e.target.value)}>
+                                            <option value="">Selecione...</option>
+                                            {dbCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
-                                <div className="form-group">
-                                    <label className="form-label">Categoria</label>
-                                    <select className="form-select" value={formCategoria} onChange={e => setFormCategoria(e.target.value)}>
-                                        <option value="">Selecione...</option>
-                                        {dbCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                    </select>
-                                </div>
-                            </div>
+                            )}
 
+                            {/* Categoria + Competência (Imposto only) */}
+                            {formLancamentoTipo === 'imposto' && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                    <div className="form-group">
+                                        <label className="form-label">Categoria</label>
+                                        <input className="form-input" value={formCategoria} onChange={e => setFormCategoria(e.target.value)} placeholder="Ex: Federal" />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Competência</label>
+                                        <input className="form-input" value={formCompetencia} onChange={e => setFormCompetencia(e.target.value)} placeholder="Ex: 03/2026" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Status + Data Pagamento */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                 <div className="form-group">
                                     <label className="form-label">Status</label>
@@ -1428,31 +1360,24 @@ export default function FinanceiroPage() {
                                 )}
                             </div>
 
-                            {transactionModal.type === 'add' && (
+                            {/* Recurrence options */}
+                            {formLancamentoTipo === 'recorrente' && transactionModal.type === 'add' && (
                                 <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: 12, border: '1px solid var(--border-default)' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => setFormIsRecurrente(!formIsRecurrente)}>
-                                        <div style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: formIsRecurrente ? 'var(--accent)' : 'transparent', transition: 'all 0.2s' }}>
-                                            {formIsRecurrente && <Check size={12} color="#fff" />}
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#8B5CF6', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><RefreshCw size={14} /> Configurações de Recorrência</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                        <div className="form-group">
+                                            <label className="form-label">Frequência</label>
+                                            <select className="form-select" style={{ padding: '8px 12px', fontSize: 13 }} value={formRecurrenciaTipo} onChange={e => setFormRecurrenciaTipo(e.target.value as any)}>
+                                                <option value="mensal">Mensal</option>
+                                                <option value="semanal">Semanal</option>
+                                                <option value="anual">Anual</option>
+                                            </select>
                                         </div>
-                                        <span style={{ fontSize: 13, fontWeight: 600, color: formIsRecurrente ? 'var(--text-primary)' : 'var(--text-muted)' }}>Repetir Lançamento</span>
+                                        <div className="form-group">
+                                            <label className="form-label">Ocorrências</label>
+                                            <input type="number" className="form-input" style={{ padding: '8px 12px', fontSize: 13 }} min={1} max={60} value={formRecurrenciaQtd} onChange={e => setFormRecurrenciaQtd(parseInt(e.target.value) || 1)} />
+                                        </div>
                                     </div>
-
-                                    {formIsRecurrente && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
-                                            <div className="form-group">
-                                                <label className="form-label">Frequência</label>
-                                                <select className="form-select" style={{ padding: '8px 12px', fontSize: 13 }} value={formRecurrenciaTipo} onChange={e => setFormRecurrenciaTipo(e.target.value as any)}>
-                                                    <option value="mensal">Mensal</option>
-                                                    <option value="semanal">Semanal</option>
-                                                    <option value="anual">Anual</option>
-                                                </select>
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Ocorrências</label>
-                                                <input type="number" className="form-input" style={{ padding: '8px 12px', fontSize: 13 }} min={1} max={60} value={formRecurrenciaQtd} onChange={e => setFormRecurrenciaQtd(parseInt(e.target.value) || 1)} />
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             )}
 
@@ -1460,63 +1385,7 @@ export default function FinanceiroPage() {
                                 {formSaving ? (
                                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Clock size={16} className="animate-spin" /> Salvando...</span>
                                 ) : (
-                                    'Salvar Movimentação'
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {taxModal && (
-                <div className="settings-modal-overlay" onClick={() => setTaxModal(null)}>
-                    <div className="settings-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, padding: 0, overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 28px', borderBottom: '1px solid var(--border-default)', background: 'var(--bg-secondary)' }}>
-                            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{taxModal.type === 'add' ? 'Novo Imposto' : 'Editar Imposto'}</h3>
-                            <button onClick={() => setTaxModal(null)} style={{ background: 'var(--bg-tertiary)', border: 'none', color: 'var(--text-muted)', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifySelf: 'center', cursor: 'pointer', transition: 'all 0.2s', padding: 0, justifyContent: 'center' }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)', e.currentTarget.style.background = 'var(--bg-hover)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)', e.currentTarget.style.background = 'var(--bg-tertiary)')}><X size={18} /></button>
-                        </div>
-                        <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-                            <div className="form-group">
-                                <label className="form-label">Descrição</label>
-                                <input className="form-input" value={taxDescricao} onChange={e => setTaxDescricao(e.target.value)} placeholder="Ex: Simples Nacional" />
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                                <div className="form-group">
-                                    <label className="form-label">Categoria</label>
-                                    <input className="form-input" value={taxCategoria} onChange={e => setTaxCategoria(e.target.value)} placeholder="Ex: Federal" />
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">Competência</label>
-                                    <input className="form-input" value={taxCompetencia} onChange={e => setTaxCompetencia(e.target.value)} placeholder="Ex: 03/2026" />
-                                </div>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                                <div className="form-group">
-                                    <label className="form-label">Valor</label>
-                                    <input className="form-input" value={taxValorDisplay} onChange={e => setTaxValorDisplay(formatCurrencyInput(e.target.value))} placeholder="R$ 0,00" />
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">Vencimento</label>
-                                    <input type="date" className="form-input" value={taxVencimento} onChange={e => setTaxVencimento(e.target.value)} />
-                                </div>
-                            </div>
-
-                            <div className="form-group">
-                                <label className="form-label">Status</label>
-                                <select className="form-select" value={taxStatus} onChange={e => setTaxStatus(e.target.value)}>
-                                    <option value="Pendente">Pendente</option>
-                                    <option value="Pago">Pago</option>
-                                    <option value="Vencido">Vencido</option>
-                                </select>
-                            </div>
-
-                            <button className="btn btn-primary" onClick={handleSaveTax} disabled={formSaving} style={{ padding: '14px', width: '100%', marginTop: 8 }}>
-                                {formSaving ? (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Clock size={16} className="animate-spin" /> Salvando...</span>
-                                ) : (
-                                    'Salvar Imposto'
+                                    formLancamentoTipo === 'imposto' ? 'Salvar Imposto' : 'Salvar Movimentação'
                                 )}
                             </button>
                         </div>

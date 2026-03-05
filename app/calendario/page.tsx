@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
-    ChevronLeft, ChevronRight, Plus, X, CalendarDays, List, Clock, Users
+    ChevronLeft, ChevronRight, Plus, X, CalendarDays, List, Clock
 } from 'lucide-react';
 import type { CalendarEvent } from '@/lib/types';
-import { useTeam, useCalendarEvents, addCalendarEvent, updateCalendarEvent, removeCalendarEvent } from '@/lib/hooks';
+import { useCalendarEvents, addCalendarEvent, updateCalendarEvent, removeCalendarEvent, useUsuarios, addNotification } from '@/lib/hooks';
+import type { UsuarioDB } from '@/lib/hooks';
 import { getBahiaDate, getBahiaDateString } from '@/lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,48 +19,131 @@ type ViewMode = 'month' | 'week' | 'day';
 export default function CalendarioPage() {
     const { user } = useAuth();
     const { data: eventsData, refetch } = useCalendarEvents(user?.id);
-    const { data: teamMembers } = useTeam();
+    const { data: usuarios } = useUsuarios();
 
     const [currentDate, setCurrentDate] = useState(getBahiaDate());
     const [view, setView] = useState<ViewMode>('month');
     const [showModal, setShowModal] = useState(false);
-    const [selectedDate, setSelectedDate] = useState<string | null>(null);
-    const [filterMember, setFilterMember] = useState('');
     const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
-    const [form, setForm] = useState<Partial<CalendarEvent>>({
-        titulo: '', data: '', hora_inicio: '', hora_fim: '', participantes: '', descricao: '', cor: '#3B82F6', origem: 'manual'
-    });
+    // Form state
+    const [formTitulo, setFormTitulo] = useState('');
+    const [formData, setFormData] = useState('');
+    const [formHoraInicio, setFormHoraInicio] = useState('09:00');
+    const [formHoraFim, setFormHoraFim] = useState('10:00');
+    const [formDescricao, setFormDescricao] = useState('');
+    const [formCor, setFormCor] = useState('#3B82F6');
+    const [formParticipantesIds, setFormParticipantesIds] = useState<string[]>([]);
 
-    const filteredEvents = useMemo(() =>
-        (eventsData || []).filter(e => !filterMember || (e.participantes || '').includes(filterMember)),
-        [eventsData, filterMember]
-    );
+    // Combobox state
+    const [showParticipantesList, setShowParticipantesList] = useState(false);
+    const participantesRef = useRef<HTMLDivElement>(null);
+
+    // Close combobox on outside click
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (participantesRef.current && !participantesRef.current.contains(e.target as Node)) {
+                setShowParticipantesList(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    function resetForm(dateStr?: string) {
+        setFormTitulo('');
+        setFormData(dateStr || getBahiaDateString());
+        setFormHoraInicio('09:00');
+        setFormHoraFim('10:00');
+        setFormDescricao('');
+        setFormCor('#3B82F6');
+        setFormParticipantesIds([]);
+    }
 
     function openNewEvent(dateStr?: string) {
         setEditingEvent(null);
-        setForm({ titulo: '', data: dateStr || getBahiaDateString(), hora_inicio: '09:00', hora_fim: '10:00', participantes: '', descricao: '', cor: '#3B82F6', origem: 'manual' });
+        resetForm(dateStr);
         setShowModal(true);
     }
 
     function openEditEvent(ev: CalendarEvent) {
         setEditingEvent(ev);
-        setForm({ ...ev });
+        setFormTitulo(ev.titulo || '');
+        setFormData(ev.data || '');
+        setFormHoraInicio(ev.hora_inicio || '');
+        setFormHoraFim(ev.hora_fim || '');
+        setFormDescricao(ev.descricao || '');
+        setFormCor(ev.cor || '#3B82F6');
+        setFormParticipantesIds(ev.participantes_ids || []);
         setShowModal(true);
     }
 
+    function resolveUserName(uid: string): string {
+        const u = usuarios.find(x => x.id === uid);
+        return u?.nome || uid;
+    }
+
     async function saveEvent() {
-        if (!form.titulo || !form.data) return;
+        if (!formTitulo || !formData) return;
         try {
+            const payload: any = {
+                titulo: formTitulo,
+                data: formData,
+                hora_inicio: formHoraInicio || null,
+                hora_fim: formHoraFim || null,
+                descricao: formDescricao || null,
+                cor: formCor,
+                participantes_ids: formParticipantesIds,
+                participantes: formParticipantesIds.map(uid => resolveUserName(uid)).join(', '),
+                origem: 'manual',
+            };
+
             if (editingEvent) {
-                await updateCalendarEvent(editingEvent.id, form);
+                // Find newly added participants
+                const oldIds = editingEvent.participantes_ids || [];
+                const newIds = formParticipantesIds.filter(id => !oldIds.includes(id));
+
+                await updateCalendarEvent(editingEvent.id, payload);
+
+                // Notify only newly added participants
+                if (newIds.length > 0 && user) {
+                    await notifyParticipants(newIds, formTitulo, formData);
+                }
             } else {
-                await addCalendarEvent(form as Omit<CalendarEvent, 'id' | 'created_at'>);
+                payload.owner_id = user?.id;
+                const created = await addCalendarEvent(payload as Omit<CalendarEvent, 'id' | 'created_at'>);
+
+                // Notify all participants
+                if (formParticipantesIds.length > 0 && user) {
+                    await notifyParticipants(formParticipantesIds, formTitulo, formData);
+                }
             }
             await refetch();
             setShowModal(false);
             setEditingEvent(null);
         } catch (e: any) { alert(e.message); }
+    }
+
+    async function notifyParticipants(participantIds: string[], titulo: string, data: string) {
+        const formattedDate = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR');
+        const authorName = user?.nome || 'Alguém';
+
+        for (const uid of participantIds) {
+            if (uid === user?.id) continue; // Don't notify yourself
+            try {
+                await addNotification({
+                    usuario_id: uid,
+                    tipo: 'tarefa_atribuida',
+                    titulo: `Novo evento no calendário`,
+                    mensagem: `${authorName} adicionou você ao evento "${titulo}" em ${formattedDate}.`,
+                    redirecionamento: '/calendario',
+                    modulo_origem: 'calendario',
+                    criada_em: new Date().toISOString(),
+                });
+            } catch (err) {
+                console.error('Error notifying participant:', err);
+            }
+        }
     }
 
     async function deleteEvent() {
@@ -103,7 +187,7 @@ export default function CalendarioPage() {
     const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 7:00 - 20:00
 
     function getEventsForDate(dateStr: string) {
-        return filteredEvents.filter(e => e.data === dateStr);
+        return (eventsData || []).filter(e => e.data === dateStr);
     }
 
     function dateToStr(d: Date) {
@@ -116,13 +200,6 @@ export default function CalendarioPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                 <h1 style={{ fontSize: 24, fontWeight: 600 }}>Calendário</h1>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <Users size={14} style={{ color: 'var(--text-muted)' }} />
-                        <select className="form-select" style={{ width: 160 }} value={filterMember} onChange={e => setFilterMember(e.target.value)}>
-                            <option value="">Todos os membros</option>
-                            {teamMembers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                        </select>
-                    </div>
                     <button className="btn btn-primary" onClick={() => openNewEvent()}><Plus size={14} /> Novo Evento</button>
                 </div>
             </div>
@@ -236,18 +313,21 @@ export default function CalendarioPage() {
                                 <div key={h} style={{ display: 'grid', gridTemplateColumns: '80px 1fr', minHeight: 60, borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                                     <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'right', fontWeight: 500 }}>{String(h).padStart(2, '0')}:00</div>
                                     <div style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', padding: 6, cursor: 'pointer' }} onClick={() => openNewEvent(ds)}>
-                                        {hourEvents.map(ev => (
-                                            <div key={ev.id} onClick={e => { e.stopPropagation(); openEditEvent(ev); }}
-                                                style={{ padding: '8px 12px', borderRadius: 6, background: `${ev.cor || '#3B82F6'}20`, borderLeft: `3px solid ${ev.cor || '#3B82F6'}`, marginBottom: 4, cursor: 'pointer' }}>
-                                                <div style={{ fontWeight: 600, fontSize: 13 }}>{ev.titulo}</div>
-                                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                                    {ev.hora_inicio && <span>{ev.hora_inicio}</span>}
-                                                    {ev.hora_fim && <span> — {ev.hora_fim}</span>}
-                                                    {ev.participantes && <span> · {ev.participantes}</span>}
+                                        {hourEvents.map(ev => {
+                                            const participantNames = (ev.participantes_ids || []).map(uid => resolveUserName(uid)).join(', ');
+                                            return (
+                                                <div key={ev.id} onClick={e => { e.stopPropagation(); openEditEvent(ev); }}
+                                                    style={{ padding: '8px 12px', borderRadius: 6, background: `${ev.cor || '#3B82F6'}20`, borderLeft: `3px solid ${ev.cor || '#3B82F6'}`, marginBottom: 4, cursor: 'pointer' }}>
+                                                    <div style={{ fontWeight: 600, fontSize: 13 }}>{ev.titulo}</div>
+                                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                                        {ev.hora_inicio && <span>{ev.hora_inicio}</span>}
+                                                        {ev.hora_fim && <span> — {ev.hora_fim}</span>}
+                                                        {participantNames && <span> · {participantNames}</span>}
+                                                    </div>
+                                                    {ev.descricao && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{ev.descricao}</div>}
                                                 </div>
-                                                {ev.descricao && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{ev.descricao}</div>}
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );
@@ -265,20 +345,61 @@ export default function CalendarioPage() {
                             <button className="modal-close" onClick={() => { setShowModal(false); setEditingEvent(null); }}>✕</button>
                         </div>
                         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                            <div><label className="form-label">Título *</label><input type="text" className="form-input" value={form.titulo || ''} onChange={e => setForm({ ...form, titulo: e.target.value })} /></div>
+                            <div><label className="form-label">Título *</label><input type="text" className="form-input" value={formTitulo} onChange={e => setFormTitulo(e.target.value)} /></div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                                <div><label className="form-label">Data *</label><input type="date" className="form-input" value={form.data || ''} onChange={e => setForm({ ...form, data: e.target.value })} /></div>
-                                <div><label className="form-label">Início</label><input type="time" className="form-input" value={form.hora_inicio || ''} onChange={e => setForm({ ...form, hora_inicio: e.target.value })} /></div>
-                                <div><label className="form-label">Fim</label><input type="time" className="form-input" value={form.hora_fim || ''} onChange={e => setForm({ ...form, hora_fim: e.target.value })} /></div>
+                                <div><label className="form-label">Data *</label><input type="date" className="form-input" value={formData} onChange={e => setFormData(e.target.value)} /></div>
+                                <div><label className="form-label">Início</label><input type="time" className="form-input" value={formHoraInicio} onChange={e => setFormHoraInicio(e.target.value)} /></div>
+                                <div><label className="form-label">Fim</label><input type="time" className="form-input" value={formHoraFim} onChange={e => setFormHoraFim(e.target.value)} /></div>
                             </div>
-                            <div><label className="form-label">Participantes</label><input type="text" className="form-input" value={form.participantes || ''} onChange={e => setForm({ ...form, participantes: e.target.value })} placeholder="Ex: Marcel, Ana, João" /></div>
-                            <div><label className="form-label">Descrição</label><textarea className="form-input" rows={3} value={form.descricao || ''} onChange={e => setForm({ ...form, descricao: e.target.value })} /></div>
+
+                            {/* Participants Combobox */}
+                            <div>
+                                <label className="form-label">Participantes</label>
+                                <div className="combobox-container" ref={participantesRef}>
+                                    <div className={`combobox-trigger ${showParticipantesList ? 'active' : ''}`} onClick={() => setShowParticipantesList(!showParticipantesList)}>
+                                        {formParticipantesIds.length > 0 ? formParticipantesIds.map(uid => {
+                                            const u = usuarios.find(x => x.id === uid);
+                                            return (
+                                                <span key={uid} className="combobox-chip">
+                                                    {u?.nome || uid}
+                                                    <span className="combobox-chip-remove" onClick={ev => { ev.stopPropagation(); setFormParticipantesIds(formParticipantesIds.filter(x => x !== uid)); }}>×</span>
+                                                </span>
+                                            );
+                                        }) : <span className="combobox-placeholder">Selecione participantes...</span>}
+                                    </div>
+                                    {showParticipantesList && (
+                                        <div className="combobox-dropdown">
+                                            {usuarios.filter(u => u.id !== user?.id).map(u => {
+                                                const isSel = formParticipantesIds.includes(u.id);
+                                                return (
+                                                    <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
+                                                        onClick={() => {
+                                                            setFormParticipantesIds(isSel
+                                                                ? formParticipantesIds.filter(x => x !== u.id)
+                                                                : [...formParticipantesIds, u.id]
+                                                            );
+                                                        }}>
+                                                        <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
+                                                        <div className="combobox-item-info">
+                                                            <div className="combobox-item-name">{u.nome}</div>
+                                                            <div className="combobox-item-role">{u.cargo || u.categoria}</div>
+                                                        </div>
+                                                        <span className="combobox-item-check">✓</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div><label className="form-label">Descrição</label><textarea className="form-input" rows={3} value={formDescricao} onChange={e => setFormDescricao(e.target.value)} /></div>
                             <div>
                                 <label className="form-label">Cor</label>
                                 <div style={{ display: 'flex', gap: 8 }}>
                                     {EVENT_COLORS.map(c => (
-                                        <button key={c} onClick={() => setForm({ ...form, cor: c })} style={{
-                                            width: 28, height: 28, borderRadius: '50%', background: c, border: form.cor === c ? '3px solid var(--text-primary)' : '2px solid transparent', cursor: 'pointer'
+                                        <button key={c} onClick={() => setFormCor(c)} style={{
+                                            width: 28, height: 28, borderRadius: '50%', background: c, border: formCor === c ? '3px solid var(--text-primary)' : '2px solid transparent', cursor: 'pointer'
                                         }} />
                                     ))}
                                 </div>

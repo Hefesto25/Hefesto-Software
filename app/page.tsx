@@ -24,7 +24,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, Receipt, CreditCard, Target, Percent, CheckSquare, Clock } from 'lucide-react';
-import { useFinancialTransactions, useTasks } from '@/lib/hooks';
+import { useFinancialTransactions, useOperationalTasks } from '@/lib/hooks';
 import { getBahiaDate } from '@/lib/utils';
 
 // Format utils
@@ -103,7 +103,7 @@ const DEFAULT_LAYOUT = [
 
 export default function DashboardPage() {
   const { data: transactionsData, loading: loadingTransactions } = useFinancialTransactions();
-  const { data: tasksData, loading: loadingTasks } = useTasks();
+  const { data: tasksData, loading: loadingTasks } = useOperationalTasks();
 
   const [widgetOrder, setWidgetOrder] = useState<string[]>(DEFAULT_LAYOUT);
   const [isClient, setIsClient] = useState(false);
@@ -209,8 +209,8 @@ export default function DashboardPage() {
 
   // Tasks calculations
   const totalTasks = tasksData.length;
-  const doneTasks = tasksData.filter(t => t.status === 'done').length;
-  const inProgressTasks = tasksData.filter(t => t.status === 'progress').length;
+  const doneTasks = tasksData.filter(t => t.status === 'Finalizado' || t.status === 'concluido').length;
+  const inProgressTasks = tasksData.filter(t => t.status === 'Fazendo' || t.status === 'em_andamento' || t.status === 'Revisando').length;
   const productivity = totalTasks > 0 ? ((doneTasks / totalTasks) * 100).toFixed(0) : 0;
 
   function handleDragEnd(event: DragEndEvent) {

@@ -658,7 +658,7 @@ export default function ComercialPage() {
 
     // Meta global
     const metaGlobal = goals
-        .filter(g => g.month === filterMonth && g.year === filterYear)
+        .filter(g => g.month === filterMonth && g.year === filterYear && teamMembers.find(m => m.nome === g.seller_name)?.in_comercial_team)
         .reduce((sum, g) => sum + Number(g.goal_value), 0);
     const percMeta = metaGlobal > 0 ? (receitaGerada / metaGlobal) * 100 : 0;
 
@@ -689,7 +689,9 @@ export default function ComercialPage() {
             const rec = monthFechados.reduce((s, d) => s + d.value, 0);
 
             // Meta do mes
-            const metaMes = goals.filter(g => g.month === mStr && g.year === yStr).reduce((s, g) => s + Number(g.goal_value), 0);
+            const metaMes = goals
+                .filter(g => g.month === mStr && g.year === yStr && teamMembers.find(m => m.nome === g.seller_name)?.in_comercial_team)
+                .reduce((s, g) => s + Number(g.goal_value), 0);
 
             data.push({
                 name: MONTHS.find(x => x.value === mStr)?.label.substring(0, 3) || mStr,
@@ -2708,21 +2710,27 @@ export default function ComercialPage() {
                     const oldIds = editingTarefa?.responsaveis_ids || [];
                     const newIds = tarefaForm.responsaveis_ids || [];
                     const addedIds = newIds.filter(id => !oldIds.includes(id));
+
+                    const payload = { ...tarefaForm };
+                    if (payload.data_inicio === '') payload.data_inicio = undefined;
+                    if (payload.data_termino === '') payload.data_termino = undefined;
+                    if (payload.data_conclusao === '') payload.data_conclusao = undefined;
+
                     try {
                         let savedId: string;
                         if (editingTarefa) {
-                            await updateComercialTask(editingTarefa.id, tarefaForm);
+                            await updateComercialTask(editingTarefa.id, payload);
                             savedId = editingTarefa.id;
                             showToast('Tarefa atualizada!');
                         } else {
-                            const created = await addComercialTask(tarefaForm as Omit<ComercialTask, 'id' | 'created_at'>);
+                            const created = await addComercialTask(payload as Omit<ComercialTask, 'id' | 'created_at'>);
                             savedId = created.id;
                             showToast('Tarefa criada!');
                         }
                         if (addedIds.length > 0) {
                             sendAssigneeNotificationsAndCalendar(
                                 addedIds, tarefaForm.titulo!, 'Comercial', savedId,
-                                tarefaForm.data_inicio, tarefaForm.data_termino, '#F97316'
+                                payload.data_inicio || undefined, payload.data_termino || undefined, '#F97316'
                             ).catch(console.error);
                         }
                         setShowTarefaModal(false);

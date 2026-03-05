@@ -13,13 +13,12 @@ import {
 import type { DiretorioCliente, DiretorioColaborador } from '@/lib/types';
 import ClienteModal from './ClienteModal';
 import ColaboradorModal from './ColaboradorModal';
-import CustosApiPanel from './CustosApiPanel';
+import CustosPanel from './CustosPanel';
 
 const TABS = [
     { id: 'clientes', label: 'Clientes', icon: Briefcase },
     { id: 'colaboradores', label: 'Colaboradores', icon: Users },
-    { id: 'custos_api', label: 'Custos de APIs', icon: Activity },
-    { id: 'mensalidades', label: 'Mensalidades', icon: DollarSign },
+    { id: 'custos', label: 'Custos e Assinaturas', icon: DollarSign },
 ];
 
 const STATUS_CLIENTE = {
@@ -210,64 +209,9 @@ export default function DiretorioPage() {
                 </div>
             )}
 
-            {/* TAB: CUSTOS API */}
-            {activeTab === 'custos_api' && canAccessClientes && (
-                <CustosApiPanel />
-            )}
-
-            {/* TAB: MENSALIDADES */}
-            {activeTab === 'mensalidades' && canAccessClientes && (
-                <div className="template-grid">
-                    {loadingAssinaturas || loadingClientes ? (
-                        <div className="template-empty"><p>Carregando mensalidades...</p></div>
-                    ) : assinaturas.length === 0 ? (
-                        <div className="template-empty">
-                            <DollarSign size={48} />
-                            <p>Nenhuma mensalidade cadastrada</p>
-                        </div>
-                    ) : (
-                        assinaturas.sort((a, b) => Number(a.data_vencimento || 0) - Number(b.data_vencimento || 0)).map(ass => {
-                            const cliente = clientes.find(c => c.id === ass.cliente_id);
-                            // Se houver busca, filtra pelo nome do cliente ou ferramenta
-                            if (searchQuery) {
-                                const q = searchQuery.toLowerCase();
-                                const cnome = cliente?.nome.toLowerCase() || '';
-                                const fname = ass.nome_ferramenta.toLowerCase();
-                                if (!cnome.includes(q) && !fname.includes(q)) return null;
-                            }
-                            return (
-                                <div key={ass.id} className="template-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                                            <div style={{ background: 'var(--bg-primary)', padding: 10, borderRadius: 8 }}>
-                                                <Calendar size={20} color="var(--brand-primary)" />
-                                            </div>
-                                            <div>
-                                                <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>{cliente?.nome || 'Cliente Desconhecido'}</h3>
-                                                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13 }}>{ass.nome_ferramenta}</p>
-                                            </div>
-                                        </div>
-                                        <span className={`status-badge status-${ass.status}`}>
-                                            {ass.status.charAt(0).toUpperCase() + ass.status.slice(1)}
-                                        </span>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8, padding: '12px', background: 'var(--bg-primary)', borderRadius: 8 }}>
-                                        <div>
-                                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Dia de Vencimento</span>
-                                            <div style={{ fontWeight: 500 }}>{ass.data_vencimento ? `Dia ${ass.data_vencimento}` : '--'}</div>
-                                        </div>
-                                        <div>
-                                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Valor Mensal</span>
-                                            <div style={{ fontWeight: 500 }}>
-                                                {ass.valor_mensal ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(ass.valor_mensal) : '--'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
+            {/* TAB: CUSTOS */}
+            {activeTab === 'custos' && canAccessClientes && (
+                <CustosPanel searchQuery={searchQuery} />
             )}
 
             {/* Modals */}

@@ -55,11 +55,46 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="login-page">
-            <div className="login-card">
+        <div className="login-page" style={{ background: 'transparent', overflow: 'hidden' }}>
+            {/* Background Looping GIF (Blurred) */}
+            <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                zIndex: 0,
+                overflow: 'hidden',
+                background: '#0a0a0f'
+            }}>
+                <img
+                    src="/login-bg.gif"
+                    alt="Background Animation"
+                    style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        transform: 'scale(1.1)',
+                        filter: 'blur(8px) brightness(0.6)'
+                    }}
+                />
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: 'linear-gradient(135deg, rgba(14, 20, 66, 0.4) 0%, rgba(8, 11, 42, 0.8) 100%)',
+                    zIndex: 1
+                }} />
+            </div>
+
+            <div className="login-card" style={{ position: 'relative', zIndex: 10 }}>
                 {/* Logo */}
                 <div className="login-logo">
-                    <div className="login-logo-icon">H</div>
+                    <div className="login-logo-icon">
+                        <img src="/logo.png" alt="Hefesto Logo" />
+                    </div>
                     <div>
                         <h1 className="login-logo-title">HEFESTO IA</h1>
                         <span className="login-logo-subtitle">Software Interno</span>

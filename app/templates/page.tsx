@@ -477,12 +477,12 @@ export default function TemplatesPage() {
                             )}
                             <div className="template-detail-links">
                                 {detailModelo.url_demo && (
-                                    <a href={detailModelo.url_demo} target="_blank" rel="noopener noreferrer" className="btn-primary">
+                                    <a href={detailModelo.url_demo} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
                                         <Eye size={14} /> Ver Demonstração
                                     </a>
                                 )}
                                 {detailModelo.url_repositorio && (
-                                    <a href={detailModelo.url_repositorio} target="_blank" rel="noopener noreferrer" className="btn-secondary">
+                                    <a href={detailModelo.url_repositorio} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
                                         <Github size={14} /> Repositório
                                     </a>
                                 )}

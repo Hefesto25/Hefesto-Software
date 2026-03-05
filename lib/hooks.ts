@@ -23,7 +23,8 @@ import type {
     DiretorioColabPlataforma,
     DiretorioColabDocumento,
     FinancialTax, ComercialCommissionTier,
-    ActiveTaskMention
+    ActiveTaskMention,
+    DiretorioFerramentaPredefinida
 } from './types';
 
 // Generic hook for fetching data from a table
@@ -85,25 +86,52 @@ export function useUsuarios() {
 
 const SUPABASE_URL = 'https://hlqftzvwilbwchfqelqy.supabase.co';
 
+import { createBrowserClient } from '@supabase/ssr';
+import { supabaseUrl, supabaseAnonKey } from './supabase';
+
 /**
  * Creates a new user via supabase.auth.signUp().
  * The trigger `on_auth_user_created` automatically creates the profile in `usuarios`.
  * Only requires nome, email, and password — other fields are edited later.
  */
+import { createClient } from '@supabase/supabase-js';
+
 export async function createUsuarioViaSignUp(payload: {
     email: string;
     password: string;
     nome: string;
 }): Promise<{ success: boolean; error?: string }> {
-    const { data, error } = await supabase.auth.signUp({
+    // 1. Get the current admin session
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+
+    // Create a vanilla client that does absolutely no persistence
+    const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+        }
+    });
+
+    const { data, error } = await tempSupabase.auth.signUp({
         email: payload.email,
         password: payload.password,
         options: {
             data: {
                 nome: payload.nome,
+                categoria: "Operacional", // Padrao
+                modulos_acesso: ["/"]
             },
         },
     });
+
+    // 2. Regardless of what happened, restore the admin session on the main client 
+    // to be absolutely sure the admin isn't logged out.
+    if (currentSession) {
+        await supabase.auth.setSession({
+            access_token: currentSession.access_token,
+            refresh_token: currentSession.refresh_token,
+        });
+    }
 
     if (error) {
         return { success: false, error: error.message };
@@ -1385,6 +1413,18 @@ export async function updateDiretorioAssinatura(id: string, updates: Partial<Dir
 }
 export async function removeDiretorioAssinatura(id: string) {
     const { error } = await supabase.from('diretorio_assinaturas').delete().eq('id', id);
+    if (error) throw error;
+}
+// 4b. Ferramentas Predefinidas (Diretório)
+export function useDiretorioFerramentasPredefinidas() {
+    return useSupabaseTable<DiretorioFerramentaPredefinida>('diretorio_ferramentas_predefinidas', { column: 'name', ascending: true });
+}
+export async function addDiretorioFerramentaPredefinida(ferramenta: Omit<DiretorioFerramentaPredefinida, 'id' | 'created_at'>) {
+    const { data, error } = await supabase.from('diretorio_ferramentas_predefinidas').insert(ferramenta).select().single();
+    if (error) throw error; return data as DiretorioFerramentaPredefinida;
+}
+export async function removeDiretorioFerramentaPredefinida(id: string) {
+    const { error } = await supabase.from('diretorio_ferramentas_predefinidas').delete().eq('id', id);
     if (error) throw error;
 }
 

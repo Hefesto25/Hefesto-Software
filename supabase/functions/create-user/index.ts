@@ -66,6 +66,12 @@ Deno.serve(async (req: Request) => {
             email,
             password,
             email_confirm: true,
+            user_metadata: {
+                nome,
+                cargo: cargo || null,
+                categoria,
+                modulos_acesso: modulos_acesso || ["/"]
+            }
         });
 
         if (authError) {
@@ -78,34 +84,11 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        const newUserId = authData.user.id;
-
-        // Step 2: Insert profile in the usuarios table
-        const { data: profile, error: profileError } = await adminClient
-            .from("usuarios")
-            .insert({
-                id: newUserId,
-                nome,
-                email,
-                cargo: cargo || null,
-                categoria,
-                modulos_acesso: modulos_acesso || ["/"],
-                foto_url: null,
-            })
-            .select()
-            .single();
-
-        if (profileError) {
-            // Rollback: delete the auth user if profile insert fails
-            await adminClient.auth.admin.deleteUser(newUserId);
-            return new Response(
-                JSON.stringify({ error: `Erro ao criar perfil: ${profileError.message}` }),
-                { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-        }
+        // The profile is automatically created by the `on_auth_user_created` trigger in the DB.
+        // We do not need to manually insert it here to prevent duplicate key errors.
 
         return new Response(
-            JSON.stringify({ success: true, user: profile }),
+            JSON.stringify({ success: true, user: { id: authData.user.id, nome, email, categoria } }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     } catch (err) {

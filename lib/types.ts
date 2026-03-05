@@ -487,6 +487,7 @@ export interface DiretorioAssinatura {
     cliente_id: string;
     nome_ferramenta: string;
     responsavel_pag?: 'nos' | 'cliente';
+    categoria?: 'API' | 'SaaS' | 'Outros' | string;
     valor_mensal?: number;
     data_vencimento?: string;
     status: 'ativa' | 'vencida' | 'cancelada';
@@ -541,5 +542,11 @@ export interface DiretorioColabDocumento {
     categoria?: 'Pessoal' | 'Contratual' | 'Técnico' | 'Outros';
     arquivo_url?: string;
     observacoes?: string;
+    created_at?: string;
+}
+
+export interface DiretorioFerramentaPredefinida {
+    id: string;
+    name: string;
     created_at?: string;
 }

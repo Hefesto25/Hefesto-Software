@@ -85,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 return;
             }
 
+            const isAdminGeral = data.categoria === 'Admin Geral';
             const perfil: UsuarioPerfil = {
                 id: data.id,
                 nome: data.nome,
@@ -92,9 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 cargo: data.cargo,
                 categoria: data.categoria as UserCategory,
                 foto_url: data.foto_url,
-                modulos_acesso: data.modulos_acesso?.length
-                    ? data.modulos_acesso
-                    : DEFAULT_MODULES_BY_CATEGORY[data.categoria as UserCategory] || ['/'],
+                modulos_acesso: isAdminGeral
+                    ? DEFAULT_MODULES_BY_CATEGORY['Admin Geral']
+                    : (data.modulos_acesso?.length
+                        ? data.modulos_acesso
+                        : DEFAULT_MODULES_BY_CATEGORY[data.categoria as UserCategory] || ['/']),
                 permissao_diretorio_clientes: data.permissao_diretorio_clientes,
                 permissao_diretorio_colaboradores: data.permissao_diretorio_colaboradores,
                 initials: getInitials(data.nome),

@@ -21,7 +21,10 @@ import {
   BellOff,
   LogOut,
   FileCode2,
-  BookOpen
+  BookOpen,
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import type { Notification } from '@/lib/types';
 
@@ -42,6 +45,7 @@ const allNavItems: NavItem[] = [
   { href: '/chat', label: 'Chat', icon: MessageSquare },
   { href: '/templates', label: 'Templates', icon: FileCode2 },
   { href: '/diretorio', label: 'Diretório', icon: BookOpen },
+  { href: '/minhas-tarefas', label: 'Minhas Tarefas', icon: CheckSquare },
 ];
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
@@ -56,6 +60,7 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
   '/diretorio': { title: 'Diretório', subtitle: 'Clientes e Colaboradores' },
   '/configuracoes': { title: 'Configurações', subtitle: 'Gerencie sua equipe e permissões' },
   '/notificacoes': { title: 'Notificações', subtitle: 'Histórico completo de notificações' },
+  '/minhas-tarefas': { title: 'Minhas Tarefas', subtitle: 'Suas atividades em todos os módulos' },
 };
 
 function formatRelativeTime(dateStr: string): string {
@@ -158,6 +163,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut, getAllowedModules } = useAuth();
   const allowed = getAllowedModules();
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     setCurrentTime(new Date());
@@ -204,24 +210,27 @@ function AppContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Filter nav items by user's allowed modules, but ALWAYS show Diretório
+  // Filter nav items by user's allowed modules, but ALWAYS show Diretório and Minhas Tarefas
   const visibleNavItems = allNavItems.filter(item =>
-    allowed.includes(item.href) || item.href === '/diretorio'
+    allowed.includes(item.href) || item.href === '/diretorio' || item.href === '/minhas-tarefas'
   );
 
   // Check if user can access current route
   const canAccessRoute = allowed.includes(pathname) ||
     pathname === '/' ||
     pathname === '/notificacoes' ||
-    pathname === '/diretorio';
+    pathname === '/diretorio' ||
+    pathname === '/minhas-tarefas';
 
   return (
     <div className="app-layout">
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-logo">
-          <div className="sidebar-logo-icon">H</div>
-          <div>
+          <div className="sidebar-logo-icon">
+            <img src="/logo.png" alt="Hefesto Logo" />
+          </div>
+          <div className="sidebar-logo-text">
             <h1>HEFESTO IA</h1>
             <span>Software Interno</span>
           </div>
@@ -239,7 +248,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
                   className={`sidebar-link ${isActive ? 'active' : ''}`}
                 >
                   <Icon size={18} />
-                  {item.label}
+                  <span className="sidebar-link-label">{item.label}</span>
                   {item.badge && <span className="sidebar-badge">{item.badge}</span>}
                 </Link>
               );
@@ -247,12 +256,22 @@ function AppContent({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
 
-        {/* User profile + logout */}
-        <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border-default)' }}>
+        {/* Sidebar Footer Area */}
+        <div className="sidebar-footer" style={{ marginTop: 'auto', borderTop: '1px solid var(--border-default)', display: 'flex', flexDirection: 'column' }}>
+
+          {/* Toggle Button */}
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="sidebar-toggle-btn"
+            title={isSidebarCollapsed ? "Expandir Menu" : "Recolher Menu"}
+          >
+            {isSidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            <span className="sidebar-link-label">Recolher Menu</span>
+          </button>
+
           <Link
             href="/configuracoes"
             className="sidebar-user"
-            style={{ textDecoration: 'none', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}
           >
             {user.foto_url ? (
               <img src={user.foto_url} alt="Perfil" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }} />
@@ -266,12 +285,11 @@ function AppContent({ children }: { children: React.ReactNode }) {
           </Link>
           <button
             onClick={signOut}
-            className="sidebar-link"
-            style={{ width: '100%', borderTop: '1px solid var(--border-default)', borderRadius: 0, color: 'var(--text-muted)', padding: '10px 16px' }}
+            className="sidebar-link sidebar-logout-btn"
             title="Sair do sistema"
           >
             <LogOut size={16} />
-            Sair
+            <span className="sidebar-link-label">Sair</span>
           </button>
         </div>
       </aside>

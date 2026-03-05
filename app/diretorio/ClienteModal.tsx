@@ -3,15 +3,16 @@ import {
     X, Edit2, Trash2, Plus, Building2, Phone, Mail, Globe, Eye, EyeOff, CheckCircle2, AlertCircle, Copy, Link as LinkIcon, Lock, UserCircle, Calendar, DollarSign, Server
 } from 'lucide-react';
 import type {
-    DiretorioCliente, DiretorioContato, DiretorioLogin, DiretorioAssinatura, DiretorioCusto
+    DiretorioCliente, DiretorioContato, DiretorioLogin, DiretorioAssinatura
 } from '@/lib/types';
 import {
-    useDiretorioContatos, useDiretorioLogins, useDiretorioAssinaturas, useDiretorioCustos,
+    useDiretorioContatos, useDiretorioLogins, useDiretorioAssinaturas,
     addDiretorioCliente, updateDiretorioCliente, removeDiretorioCliente,
     addDiretorioContato, updateDiretorioContato, removeDiretorioContato,
     revealDiretorioPassword, upsertDiretorioLogin, removeDiretorioLogin,
-    addDiretorioAssinatura, updateDiretorioAssinatura, removeDiretorioAssinatura,
-    addDiretorioCusto, updateDiretorioCusto, removeDiretorioCusto
+    addDiretorioCusto, updateDiretorioCusto, removeDiretorioCusto, useDiretorioCustos,
+    useDiretorioFerramentasPredefinidas,
+    addDiretorioAssinatura, updateDiretorioAssinatura, removeDiretorioAssinatura
 } from '@/lib/hooks';
 
 interface ClienteModalProps {
@@ -92,8 +93,7 @@ export default function ClienteModal({ cliente, onClose, onSave }: ClienteModalP
                         <button className={`tab-btn ${subTab === 'info' ? 'active' : ''}`} onClick={() => setSubTab('info')}>Informações Gerais</button>
                         <button className={`tab-btn ${subTab === 'contatos' ? 'active' : ''}`} onClick={() => setSubTab('contatos')}>Contatos</button>
                         <button className={`tab-btn ${subTab === 'logins' ? 'active' : ''}`} onClick={() => setSubTab('logins')}>Logins e Plataformas</button>
-                        <button className={`tab-btn ${subTab === 'assinaturas' ? 'active' : ''}`} onClick={() => setSubTab('assinaturas')}>Assinaturas</button>
-                        <button className={`tab-btn ${subTab === 'custos' ? 'active' : ''}`} onClick={() => setSubTab('custos')}>Custos</button>
+                        <button className={`tab-btn ${subTab === 'assinaturas' ? 'active' : ''}`} onClick={() => setSubTab('assinaturas')}>Ass. e Custos</button>
                     </div>
                 )}
 
@@ -176,18 +176,13 @@ export default function ClienteModal({ cliente, onClose, onSave }: ClienteModalP
                         <LoginsTab clienteId={cliente.id} showToast={showToast} requestConfirm={requestConfirm} />
                     )}
 
-                    {/* TAB: ASSINATURAS */}
+                    {/* TAB: ASS. E CUSTOS */}
                     {cliente && subTab === 'assinaturas' && (
                         <AssinaturasTab clienteId={cliente.id} showToast={showToast} requestConfirm={requestConfirm} />
                     )}
 
-                    {/* TAB: CUSTOS */}
-                    {cliente && subTab === 'custos' && (
-                        <CustosTab clienteId={cliente.id} showToast={showToast} requestConfirm={requestConfirm} />
-                    )}
-
                     {/* TODO: Se sobrar alguma aba não mapeada */}
-                    {cliente && subTab !== 'info' && subTab !== 'contatos' && subTab !== 'logins' && subTab !== 'assinaturas' && subTab !== 'custos' && (
+                    {cliente && subTab !== 'info' && subTab !== 'contatos' && subTab !== 'logins' && subTab !== 'assinaturas' && (
                         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                             <p>Em desenvolvimento: Aba {subTab}</p>
                         </div>
@@ -197,8 +192,8 @@ export default function ClienteModal({ cliente, onClose, onSave }: ClienteModalP
 
             {/* Custom Confirm Dialog */}
             {confirmDialog?.isOpen && (
-                <div className="modal-overlay" style={{ zIndex: 1000, background: 'rgba(0,0,0,0.8)' }}>
-                    <div className="modal-content" style={{ width: 400, padding: 32, textAlign: 'center' }}>
+                <div className="modal-overlay" style={{ zIndex: 1000, background: 'rgba(0,0,0,0.8)' }} onClick={e => { e.stopPropagation(); setConfirmDialog(null); }}>
+                    <div className="modal-content" style={{ width: 400, padding: 32, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                         <AlertCircle size={48} color="var(--danger)" style={{ margin: '0 auto 16px' }} />
                         <h3 style={{ fontSize: 20, marginBottom: 8 }}>Confirmar Exclusão</h3>
                         <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: 14 }}>{confirmDialog.title}</p>
@@ -380,15 +375,16 @@ function LoginsTab({ clienteId, showToast, requestConfirm }: { clienteId: string
         setSaving(false);
     }
 
-    async function handleDelete(id: string) {
-        if (!confirm('Excluir este acesso?')) return;
-        try {
-            await removeDiretorioLogin(id);
-            setLogins(logins.filter(l => l.id !== id));
-            showToast('Acesso excluído');
-        } catch (e) {
-            showToast('Erro ao excluir', 'error');
-        }
+    function handleDelete(id: string) {
+        requestConfirm('Excluir este acesso?', async () => {
+            try {
+                await removeDiretorioLogin(id);
+                setLogins(logins.filter(l => l.id !== id));
+                showToast('Acesso excluído');
+            } catch (e) {
+                showToast('Erro ao excluir', 'error');
+            }
+        });
     }
 
     async function handleReveal(id: string) {
@@ -524,35 +520,48 @@ function isVencendo(data_str?: string) {
 
 function AssinaturasTab({ clienteId, showToast, requestConfirm }: { clienteId: string, showToast: any, requestConfirm: (t: string, fn: () => void) => void }) {
     const { data: assinaturas, loading, setData: setAssinaturas } = useDiretorioAssinaturas(clienteId);
+    const { data: ferramentas } = useDiretorioFerramentasPredefinidas();
     const [saving, setSaving] = useState(false);
     const [editing, setEditing] = useState<DiretorioAssinatura | null>(null);
 
     const [nomeFerramenta, setNomeFerramenta] = useState('');
+    const [customFerramenta, setCustomFerramenta] = useState('');
     const [responsavelPag, setResponsavelPag] = useState<'nos' | 'cliente'>('nos');
     const [valorMensal, setValorMensal] = useState('');
     const [dataVencimento, setDataVencimento] = useState('');
     const [status, setStatus] = useState<'ativa' | 'vencida' | 'cancelada'>('ativa');
+    const [categoria, setCategoria] = useState('');
     const [observacoes, setObservacoes] = useState('');
 
     function openEdit(a: DiretorioAssinatura) {
-        setEditing(a); setNomeFerramenta(a.nome_ferramenta);
+        setEditing(a);
+        const nameInList = ferramentas.find(f => f.name.toLowerCase() === a.nome_ferramenta.toLowerCase());
+        if (nameInList) {
+            setNomeFerramenta(nameInList.name);
+            setCustomFerramenta('');
+        } else {
+            setNomeFerramenta('outro');
+            setCustomFerramenta(a.nome_ferramenta);
+        }
         setResponsavelPag(a.responsavel_pag || 'nos'); setValorMensal(a.valor_mensal?.toString() || '');
         setDataVencimento(a.data_vencimento ? a.data_vencimento.split('T')[0] : '');
-        setStatus(a.status); setObservacoes(a.observacoes || '');
+        setStatus(a.status); setCategoria(a.categoria || ''); setObservacoes(a.observacoes || '');
     }
 
     function openNew() {
-        setEditing(null); setNomeFerramenta(''); setResponsavelPag('nos');
-        setValorMensal(''); setDataVencimento(''); setStatus('ativa'); setObservacoes('');
+        setEditing(null); setNomeFerramenta(''); setCustomFerramenta(''); setResponsavelPag('nos');
+        setValorMensal(''); setDataVencimento(''); setStatus('ativa'); setCategoria(''); setObservacoes('');
     }
 
     async function handleSave() {
-        if (!nomeFerramenta.trim()) { showToast('Nome da ferramenta é obrigatório', 'error'); return; }
+        const finalFerramenta = nomeFerramenta === 'outro' ? customFerramenta.trim() : nomeFerramenta;
+        if (!finalFerramenta) { showToast('Nome da ferramenta é obrigatório', 'error'); return; }
         setSaving(true);
         const payload: Omit<DiretorioAssinatura, 'id' | 'created_at'> = {
             cliente_id: clienteId,
-            nome_ferramenta: nomeFerramenta.trim(),
+            nome_ferramenta: finalFerramenta,
             responsavel_pag: responsavelPag,
+            categoria: categoria || undefined,
             valor_mensal: valorMensal ? parseFloat(valorMensal) : undefined,
             data_vencimento: dataVencimento || undefined,
             status,
@@ -575,15 +584,16 @@ function AssinaturasTab({ clienteId, showToast, requestConfirm }: { clienteId: s
         setSaving(false);
     }
 
-    async function handleDelete(id: string) {
-        if (!confirm('Excluir esta assinatura?')) return;
-        try {
-            await removeDiretorioAssinatura(id);
-            setAssinaturas(assinaturas.filter(a => a.id !== id));
-            showToast('Assinatura excluída');
-        } catch (e) {
-            showToast('Erro ao excluir', 'error');
-        }
+    function handleDelete(id: string) {
+        requestConfirm('Excluir esta assinatura?', async () => {
+            try {
+                await removeDiretorioAssinatura(id);
+                setAssinaturas(assinaturas.filter(a => a.id !== id));
+                showToast('Assinatura excluída');
+            } catch (e) {
+                showToast('Erro ao excluir', 'error');
+            }
+        });
     }
 
     const valorTotal = assinaturas.reduce((acc, a) => acc + (a.status === 'ativa' && a.valor_mensal ? a.valor_mensal : 0), 0);
@@ -626,6 +636,11 @@ function AssinaturasTab({ clienteId, showToast, requestConfirm }: { clienteId: s
                                             <span style={{ padding: '2px 6px', background: 'var(--bg-primary)', borderRadius: 4, fontSize: 11, textTransform: 'uppercase' }}>
                                                 {a.status}
                                             </span>
+                                            {a.categoria && (
+                                                <span style={{ padding: '2px 6px', background: 'var(--bg-primary)', borderRadius: 4, fontSize: 11, textTransform: 'uppercase' }}>
+                                                    {a.categoria}
+                                                </span>
+                                            )}
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                                             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -652,13 +667,36 @@ function AssinaturasTab({ clienteId, showToast, requestConfirm }: { clienteId: s
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div className="form-group">
                         <label className="form-label">Ferramenta *</label>
-                        <input className="form-input" value={nomeFerramenta} onChange={e => setNomeFerramenta(e.target.value)} placeholder="Ex: Vercel, Figma" />
+                        {nomeFerramenta === 'outro' ? (
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <input className="form-input" style={{ flex: 1 }} value={customFerramenta} onChange={e => setCustomFerramenta(e.target.value)} placeholder="Ex: Vercel, Figma" />
+                                <button className="btn btn-secondary" onClick={() => { setNomeFerramenta(''); setCustomFerramenta(''); }}>Voltar</button>
+                            </div>
+                        ) : (
+                            <select className="form-input" value={nomeFerramenta} onChange={e => setNomeFerramenta(e.target.value)}>
+                                <option value="">Selecione...</option>
+                                {ferramentas.map(f => (
+                                    <option key={f.id} value={f.name}>{f.name}</option>
+                                ))}
+                                <option value="outro">Outro...</option>
+                            </select>
+                        )}
                     </div>
-                    <div className="form-group">
+                    <div className="form-group" style={{ flex: 1 }}>
                         <label className="form-label">Responsável</label>
                         <select className="form-input" value={responsavelPag} onChange={e => setResponsavelPag(e.target.value as any)}>
                             <option value="nos">Nós (Agência)</option>
                             <option value="cliente">Cliente</option>
+                        </select>
+                    </div>
+                    <div className="form-group" style={{ flex: 1 }}>
+                        <label className="form-label">Categoria</label>
+                        <select className="form-input" value={categoria} onChange={e => setCategoria(e.target.value)}>
+                            <option value="">Selecione...</option>
+                            <option value="API">API</option>
+                            <option value="SaaS">SaaS</option>
+                            <option value="Serviço">Serviço</option>
+                            <option value="Outros">Outros</option>
                         </select>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -693,195 +731,4 @@ function AssinaturasTab({ clienteId, showToast, requestConfirm }: { clienteId: s
     );
 }
 
-function CustosTab({ clienteId, showToast, requestConfirm }: { clienteId: string, showToast: any, requestConfirm: (t: string, fn: () => void) => void }) {
-    const { data: custos, loading, setData: setCustos } = useDiretorioCustos(clienteId);
-    const [saving, setSaving] = useState(false);
-    const [editing, setEditing] = useState<DiretorioCusto | null>(null);
 
-    const [mesAno, setMesAno] = useState(() => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    });
-    const [servico, setServico] = useState('');
-    const [descricao, setDescricao] = useState('');
-    const [valor, setValor] = useState('');
-    const [tipo, setTipo] = useState('');
-    // origem is always "manual" for UI insertion
-    const [origem, setOrigem] = useState<'manual' | 'api'>('manual');
-
-    function openEdit(c: DiretorioCusto) {
-        setEditing(c); setMesAno(c.mes_ano); setServico(c.servico);
-        setDescricao(c.descricao || ''); setValor(c.valor?.toString() || '');
-        setTipo(c.tipo || ''); setOrigem(c.origem);
-    }
-
-    function openNew() {
-        setEditing(null);
-        const d = new Date();
-        setMesAno(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-        setServico(''); setDescricao(''); setValor(''); setTipo(''); setOrigem('manual');
-    }
-
-    async function handleSave() {
-        if (!servico.trim()) { showToast('Nome do serviço é obrigatório', 'error'); return; }
-        if (!mesAno.match(/^\d{4}-\d{2}$/)) { showToast('Mês/Ano inválido (AAAA-MM)', 'error'); return; }
-
-        setSaving(true);
-        const payload: Omit<DiretorioCusto, 'id' | 'created_at'> = {
-            cliente_id: clienteId,
-            mes_ano: mesAno,
-            servico: servico.trim(),
-            descricao: descricao.trim() || undefined,
-            valor: valor ? parseFloat(valor) : undefined,
-            tipo: tipo.trim() || undefined,
-            origem
-        };
-        try {
-            if (editing) {
-                const updated = await updateDiretorioCusto(editing.id, payload);
-                setCustos(custos.map(c => c.id === editing.id ? updated : c));
-                showToast('Custo atualizado');
-            } else {
-                const added = await addDiretorioCusto(payload);
-                setCustos([...custos, added]);
-                showToast('Custo adicionado');
-            }
-            openNew();
-        } catch (e: any) {
-            showToast('Erro: ' + (e.message || 'Erro inesperado'), 'error');
-        }
-        setSaving(false);
-    }
-
-    function handleDelete(id: string) {
-        requestConfirm('Excluir este registro de custo?', async () => {
-            try {
-                await removeDiretorioCusto(id);
-                setCustos(custos.filter(c => c.id !== id));
-                showToast('Custo excluído');
-            } catch (e) {
-                showToast('Erro ao excluir', 'error');
-            }
-        });
-    }
-
-    // Calcular custo do mês atual para o KPI
-    const d = new Date();
-    const currentMesAno = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const custosMesAtual = custos.filter(c => c.mes_ano === currentMesAno);
-    const totalMesAtual = custosMesAtual.reduce((acc, c) => acc + (c.valor || 0), 0);
-
-    // Organizar custos agrupados por mês
-    const agrupadosPorMes = custos.reduce((acc, c) => {
-        if (!acc[c.mes_ano]) acc[c.mes_ano] = [];
-        acc[c.mes_ano].push(c);
-        return acc;
-    }, {} as Record<string, DiretorioCusto[]>);
-
-    // Ordenar os meses decrescentes
-    const mesesOrdenados = Object.keys(agrupadosPorMes).sort((a, b) => b.localeCompare(a));
-
-    return (
-        <div style={{ display: 'flex', gap: 24 }}>
-            {/* Lista */}
-            <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <h3 style={{ fontSize: 16 }}>Custos de Infraestrutura</h3>
-                    <div style={{ background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 20, fontSize: 13, fontWeight: 500 }}>
-                        Total no Mês Atual ({currentMesAno}): <span style={{ color: 'var(--brand-primary)' }}>R$ {totalMesAtual.toFixed(2).replace('.', ',')}</span>
-                    </div>
-                </div>
-
-                {loading ? <p>Carregando...</p> : custos.length === 0 ? <p className="template-empty" style={{ padding: 20 }}>Nenhum custo registrado</p> : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                        {mesesOrdenados.map(mes => {
-                            const custosNoMes = agrupadosPorMes[mes];
-                            const somaMes = custosNoMes.reduce((acc, c) => acc + (c.valor || 0), 0);
-
-                            // Parse para exibir mais agradável o mês ex: "Abril 2024" ou apenas "2024-04"
-                            const [ano, mesTxt] = mes.split('-');
-                            const nomeMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-                            const displayMes = `${nomeMeses[parseInt(mesTxt) - 1]} ${ano}`;
-
-                            return (
-                                <div key={mes}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid var(--border-default)' }}>
-                                        <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>{displayMes}</h4>
-                                        <span style={{ fontSize: 14, fontWeight: 600 }}>R$ {somaMes.toFixed(2).replace('.', ',')}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                        {custosNoMes.map(c => (
-                                            <div key={c.id} style={{ padding: '12px 16px', borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                                    <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                        <Server size={14} style={{ color: 'var(--text-muted)' }} />
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ fontWeight: 500, fontSize: 14, display: 'flex', gap: 6, alignItems: 'center' }}>
-                                                            {c.servico}
-                                                            {c.origem === 'api' && <span style={{ fontSize: 10, background: 'var(--brand-primary)', color: '#000', padding: '2px 4px', borderRadius: 4, fontWeight: 700 }}>AUTO</span>}
-                                                        </div>
-                                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                                            {c.tipo && <span>{c.tipo} • </span>}
-                                                            {c.descricao}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                                                    <div style={{ fontWeight: 600, fontSize: 14 }}>R$ {c.valor?.toFixed(2).replace('.', ',') || '0,00'}</div>
-                                                    {c.origem === 'manual' ? (
-                                                        <div style={{ display: 'flex', gap: 8 }}>
-                                                            <button className="settings-action-btn" onClick={() => openEdit(c)}><Edit2 size={14} /></button>
-                                                            <button className="settings-action-btn" onClick={() => handleDelete(c.id)}><Trash2 size={14} color="var(--danger)" /></button>
-                                                        </div>
-                                                    ) : (
-                                                        <div style={{ width: 60, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>via API</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
-
-            {/* Form */}
-            <div style={{ width: 320, background: 'var(--bg-secondary)', padding: 20, borderRadius: 8, height: 'fit-content' }}>
-                <h4 style={{ margin: '0 0 16px', fontSize: 14 }}>{editing ? 'Editar Custo' : 'Lançar Custo Manual'}</h4>
-                {editing?.origem === 'api' ? (
-                    <div className="template-empty" style={{ padding: 20 }}>Custos obtidos via API não podem ser editados manualmente.</div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        <div className="form-group">
-                            <label className="form-label">Mês de Referência *</label>
-                            <input className="form-input" type="month" value={mesAno} onChange={e => setMesAno(e.target.value)} />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Serviço / Provedor *</label>
-                            <input className="form-input" value={servico} onChange={e => setServico(e.target.value)} placeholder="Ex: AWS, Vercel" />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Tipo de Recurso</label>
-                            <input className="form-input" value={tipo} onChange={e => setTipo(e.target.value)} placeholder="Ex: Compute, Storage, Database" />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Valor do Consumo (R$)</label>
-                            <input className="form-input" type="number" step="0.01" value={valor} onChange={e => setValor(e.target.value)} placeholder="0.00" />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Descrição</label>
-                            <textarea className="form-input" rows={2} value={descricao} onChange={e => setDescricao(e.target.value)} />
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                            {editing && <button className="btn btn-secondary" style={{ flex: 1, padding: '10px' }} onClick={openNew}>Cancelar</button>}
-                            <button className="btn btn-primary" style={{ flex: 1, padding: '10px', borderRadius: '8px', boxShadow: '0 4px 12px 0 rgba(249, 115, 22, 0.2)' }} onClick={handleSave} disabled={saving}>{saving ? 'Salvo...' : 'Salvar'}</button>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
