@@ -15,7 +15,7 @@ import {
     useFinancialTransactions, addFinancialTransaction, updateFinancialTransaction, removeFinancialTransaction,
     useClients, useFinancialTaxes, addFinancialTax, updateFinancialTax, removeFinancialTax
 } from '@/lib/hooks';
-import { formatCurrencyInput, parseCurrencyInput, getBahiaDate, getBahiaDateString } from '@/lib/utils';
+import { formatCurrencyInput, parseCurrencyInput, getBahiaDate, getBahiaDateString, formatLocalSystemDate } from '@/lib/utils';
 import type { FinancialGoal, FinancialTransaction, FinancialTax } from '@/lib/types';
 
 function formatCurrency(value: number) {
@@ -550,9 +550,9 @@ export default function FinanceiroPage() {
 
                 const filteredPending = transactionsData.filter(item => {
                     if (item.status !== 'pendente') return false;
-                    const d = new Date(item.data_vencimento);
-                    const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
-                    const itemYear = String(d.getFullYear());
+                    const dateParts = item.data_vencimento.split('-');
+                    const itemYear = dateParts[0];
+                    const itemMonth = dateParts[1];
                     if (dashMonth !== 'todos' && itemMonth !== dashMonth) return false;
                     if (dashYear !== 'todos' && itemYear !== dashYear) return false;
                     return true;
@@ -914,9 +914,9 @@ export default function FinanceiroPage() {
                 // Apply period filter
                 if (movMonth !== 'todos' || movYear !== 'todos') {
                     filtered = filtered.filter(item => {
-                        const d = new Date(item.data_vencimento);
-                        const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
-                        const itemYear = String(d.getFullYear());
+                        const dateParts = item.data_vencimento.split('-');
+                        const itemYear = dateParts[0];
+                        const itemMonth = dateParts[1];
                         if (movMonth !== 'todos' && itemMonth !== movMonth) return false;
                         if (movYear !== 'todos' && itemYear !== movYear) return false;
                         return true;
@@ -1118,7 +1118,7 @@ export default function FinanceiroPage() {
                                     )}
                                     {filtered.map(item => (
                                         <tr key={item.id}>
-                                            <td>{new Date(item.status === 'pago_recebido' && item.data_pagamento ? item.data_pagamento : item.data_vencimento).toLocaleDateString('pt-BR')}</td>
+                                            <td>{formatLocalSystemDate(item.status === 'pago_recebido' && item.data_pagamento ? item.data_pagamento : item.data_vencimento)}</td>
                                             <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
                                             <td><TypeBadge item={item} /></td>
                                             <td><StatusBadge item={item} /></td>
