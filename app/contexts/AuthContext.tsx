@@ -109,11 +109,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     useEffect(() => {
+        let mounted = true;
+
         // Get initial session
         supabase.auth.getSession().then(({ data: { session } }) => {
+            if (!mounted) return;
             setSession(session);
             if (session?.user) {
-                loadProfile(session.user.id).finally(() => setLoading(false));
+                loadProfile(session.user.id).finally(() => {
+                    if (mounted) setLoading(false);
+                });
             } else {
                 setLoading(false);
             }
@@ -121,17 +126,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Listen to auth state changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!mounted) return;
             setSession(session);
             if (session?.user) {
                 loadProfile(session.user.id);
             } else {
                 setUser(null);
-                if (!loading) router.replace('/login');
+                // Use a functional update or a ref if loading was needed, 
+                // but here we can just check the current state if we really need to redirect.
+                // However, the middleware already handles the main redirect.
+                router.replace('/login');
             }
         });
 
-        return () => subscription.unsubscribe();
-    }, [loadProfile, router, loading]);
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
+    }, [loadProfile, router]);
 
     const signOut = useCallback(async () => {
         await supabase.auth.signOut();

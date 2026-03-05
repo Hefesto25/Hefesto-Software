@@ -1296,7 +1296,7 @@ export function useActiveTasksForMention(userModules: string[] = []) {
 
         fetchTasks();
         return () => { mounted = false; };
-    }, [userModules]);
+    }, [JSON.stringify(userModules)]);
 
     return { tasks, loading };
 }
