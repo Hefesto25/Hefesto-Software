@@ -89,9 +89,9 @@ export default function CalendarioPage() {
             const payload: any = {
                 titulo: formTitulo,
                 data: formData,
-                hora_inicio: formHoraInicio || null,
-                hora_fim: formHoraFim || null,
-                descricao: formDescricao || null,
+                hora_inicio: formHoraInicio || undefined,
+                hora_fim: formHoraFim || undefined,
+                descricao: formDescricao || undefined,
                 cor: formCor,
                 participantes_ids: formParticipantesIds,
                 participantes: formParticipantesIds.map(uid => resolveUserName(uid)).join(', '),
