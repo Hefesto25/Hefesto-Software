@@ -1,17 +1,21 @@
 export function formatCurrencyInput(value: string): string {
+    const isNegative = value.includes('-');
     const numericValue = value.replace(/\D/g, '');
-    if (!numericValue) return '';
+    if (!numericValue) return isNegative ? '-' : '';
     const decimalValue = (parseInt(numericValue, 10) / 100).toFixed(2);
+    const num = isNegative ? -Number(decimalValue) : Number(decimalValue);
     return new Intl.NumberFormat('pt-BR', {
         style: 'currency',
         currency: 'BRL',
-    }).format(Number(decimalValue));
+    }).format(num);
 }
 
 export function parseCurrencyInput(value: string): number {
+    const isNegative = value.includes('-');
     const numericValue = value.replace(/\D/g, '');
     if (!numericValue) return 0;
-    return parseInt(numericValue, 10) / 100;
+    const val = parseInt(numericValue, 10) / 100;
+    return isNegative ? -val : val;
 }
 
 /**

@@ -1232,7 +1232,7 @@ export function useActiveTasksForMention(userModules: string[] = []) {
                         const stageMap: Record<string, string> = {
                             prospeccao: 'Prospecção',
                             diagnostico: 'Diagnóstico',
-                            proposta_comercial: 'Proposta Comercial'
+                            negociacao: 'Negociação'
                         };
                         allTasks.push(...comData.map((d: any) => ({
                             id: d.id,

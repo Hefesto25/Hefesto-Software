@@ -43,7 +43,7 @@ export interface Deal {
     title: string;
     company: string;
     value: number;
-    stage: 'prospeccao' | 'diagnostico' | 'proposta_comercial' | 'fechado' | 'perdido';
+    stage: 'prospeccao' | 'diagnostico' | 'negociacao' | 'fechado' | 'perdido';
     assignee: string;
     assignee_color: string;
     date: string;

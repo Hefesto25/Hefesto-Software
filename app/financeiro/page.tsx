@@ -100,6 +100,7 @@ export default function FinanceiroPage() {
     const [formRecurrenciaQtd, setFormRecurrenciaQtd] = useState(1);
     const [formLancamentoTipo, setFormLancamentoTipo] = useState<LancamentoTipoModal>('avulso');
     const [formCompetencia, setFormCompetencia] = useState('');
+    const [formError, setFormError] = useState('');
 
     // Tax Modal state
     type TaxModalState = { type: 'add' } | { type: 'edit'; tax: FinancialTax } | null;
@@ -193,6 +194,7 @@ export default function FinanceiroPage() {
         setFormRecurrenciaQtd(1);
         setFormLancamentoTipo(defaultTipo || 'avulso');
         setFormCompetencia('');
+        setFormError('');
         setTransactionModal({ type: 'add' });
     }
 
@@ -207,6 +209,7 @@ export default function FinanceiroPage() {
         setFormDatePagamento(t.data_pagamento ? t.data_pagamento.split('T')[0] : '');
         setFormLancamentoTipo(t.grupo_recorrencia ? 'recorrente' : 'avulso');
         setFormCompetencia('');
+        setFormError('');
         setTransactionModal({ type: 'edit', transaction: t });
     }
 
@@ -221,6 +224,7 @@ export default function FinanceiroPage() {
         setFormCompetencia(tax.competencia);
         setFormTipo('saida');
         setFormClassificacao('');
+        setFormError('');
         setTransactionModal({ type: 'edit_tax', tax });
     }
 
@@ -250,19 +254,24 @@ export default function FinanceiroPage() {
     }
 
     async function handleSaveTransaction() {
-        if (!formDescricao.trim()) {
-            alert('Por favor, preencha a descrição.');
+        setFormError('');
+        const valor = parseValorDisplay(formValorDisplay);
+        if (valor < 0) {
+            setFormError('Valores negativos não são permitidos.');
+            return;
+        }
+        if (valor === 0) {
+            setFormError('Por favor, informe um valor maior que zero.');
             return;
         }
 
-        const valor = parseValorDisplay(formValorDisplay);
-        if (valor <= 0) {
-            alert('Por favor, informe um valor maior que zero. Note que o sistema formata automaticamente (ex: digite "10000" para R$ 100,00).');
+        if (!formDescricao.trim()) {
+            setFormError('Por favor, preencha a descrição.');
             return;
         }
 
         if (formLancamentoTipo === 'imposto' && !formCompetencia.trim()) {
-            alert('Por favor, informe a competência do imposto.');
+            setFormError('Por favor, informe a competência do imposto.');
             return;
         }
 
@@ -589,7 +598,7 @@ export default function FinanceiroPage() {
                     const dateStr = item.data_pagamento || item.data_vencimento;
                     const d = new Date(dateStr);
                     const monthKey = String(d.getMonth() + 1).padStart(2, '0');
-                    const abbr = MONTH_ABBR[monthKey] || monthKey;
+                    const abbr = MONTH_ABBR[monthKey];
                     if (!monthTotals[abbr]) monthTotals[abbr] = { receita: 0, despesas: 0 };
                     if (item.tipo === 'entrada') monthTotals[abbr].receita += Number(item.valor);
                     else monthTotals[abbr].despesas += Number(item.valor);
@@ -1268,6 +1277,11 @@ export default function FinanceiroPage() {
                             <button onClick={() => setTransactionModal(null)} style={{ background: 'var(--bg-tertiary)', border: 'none', color: 'var(--text-muted)', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s', padding: 0 }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)', e.currentTarget.style.background = 'var(--bg-hover)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)', e.currentTarget.style.background = 'var(--bg-tertiary)')}><X size={18} /></button>
                         </div>
                         <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: 20, maxHeight: '70vh', overflowY: 'auto' }}>
+                            {formError && (
+                                <div style={{ color: '#EF4444', background: '#EF44441A', padding: '12px 16px', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <AlertTriangle size={16} /> <span>{formError}</span>
+                                </div>
+                            )}
 
                             {/* Type Selector - only on Add */}
                             {transactionModal.type === 'add' && (

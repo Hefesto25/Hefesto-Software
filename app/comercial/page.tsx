@@ -46,7 +46,7 @@ const MONTHS = [
 const STAGES = [
     { id: 'prospeccao', label: 'Prospecção', color: '#8B5CF6' },
     { id: 'diagnostico', label: 'Diagnóstico', color: '#3B82F6' },
-    { id: 'proposta_comercial', label: 'Proposta Comercial', color: '#F59E0B' },
+    { id: 'negociacao', label: 'Negociação', color: '#F59E0B' },
     { id: 'fechado', label: 'Fechado', color: '#10B981' },
     { id: 'perdido', label: 'Perdido', color: '#EF4444' }
 ];
@@ -114,6 +114,7 @@ export default function ComercialPage() {
 
     const [showClientModal, setShowClientModal] = useState(false);
     const [newClientData, setNewClientData] = useState<Partial<ClientCRM>>({ status: 'Ativo' });
+    const [leadFormError, setLeadFormError] = useState('');
     const [selectedClient, setSelectedClient] = useState<ClientCRM | null>(null);
     const [clientTab, setClientTab] = useState<'info' | 'rentabilidade' | 'reunioes' | 'feedbacks'>('info');
     const [crmSubTab, setCrmSubTab] = useState<'ativos' | 'inativos'>('ativos');
@@ -302,7 +303,15 @@ export default function ComercialPage() {
     }
 
     async function handleCreateClient() {
-        if (!newClientData.name) return showToast('Preencha o nome do cliente.');
+        setLeadFormError('');
+        if (!newClientData.contact_email) {
+            setLeadFormError('Preencha o e-mail do cliente (obrigatório).');
+            return;
+        }
+        if (!newClientData.name) {
+            setLeadFormError('Preencha o nome do cliente.');
+            return;
+        }
         try {
             const client = await addClient({
                 name: newClientData.name,
@@ -955,7 +964,7 @@ export default function ComercialPage() {
                         await updateDeal(deal.id, { stage: stageId, data_entrada_etapa: updatedDeal.data_entrada_etapa });
 
                         // --- GATILHOS OPERACIONAIS --- //
-                        if (oldStage === 'diagnostico' && stageId === 'proposta_comercial') {
+                        if (oldStage === 'diagnostico' && stageId === 'negociacao') {
                             await addOperationalTask({
                                 titulo: `Realizar Prévia — ${deal.company}`,
                                 tipo: 'previa',
@@ -977,37 +986,40 @@ export default function ComercialPage() {
                     <>
                         {/* Sub-Tabs and Actions */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', gap: 8, padding: 4, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', width: 'fit-content' }}>
-                                <button
-                                    onClick={() => setSubTabNegocios('kanban')}
-                                    style={{
-                                        padding: '8px 20px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s',
-                                        background: subTabNegocios === 'kanban' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                        color: subTabNegocios === 'kanban' ? 'var(--text-primary)' : 'var(--text-muted)'
-                                    }}
-                                >
-                                    Kanban
-                                </button>
-                                <button
-                                    onClick={() => setSubTabNegocios('lista')}
-                                    style={{
-                                        padding: '8px 20px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s',
-                                        background: subTabNegocios === 'lista' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                        color: subTabNegocios === 'lista' ? 'var(--text-primary)' : 'var(--text-muted)'
-                                    }}
-                                >
-                                    Lista
-                                </button>
-                                <button
-                                    onClick={() => setSubTabNegocios('historico')}
-                                    style={{
-                                        padding: '8px 20px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s',
-                                        background: subTabNegocios === 'historico' ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                        color: subTabNegocios === 'historico' ? 'var(--text-primary)' : 'var(--text-muted)'
-                                    }}
-                                >
-                                    Histórico
-                                </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Negócios</h2>
+                                <div style={{ display: 'flex', gap: 8, padding: 4, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <button
+                                        onClick={() => setSubTabNegocios('kanban')}
+                                        style={{
+                                            padding: '8px 20px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s',
+                                            background: subTabNegocios === 'kanban' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            color: subTabNegocios === 'kanban' ? 'var(--text-primary)' : 'var(--text-muted)'
+                                        }}
+                                    >
+                                        Kanban
+                                    </button>
+                                    <button
+                                        onClick={() => setSubTabNegocios('lista')}
+                                        style={{
+                                            padding: '8px 20px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s',
+                                            background: subTabNegocios === 'lista' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            color: subTabNegocios === 'lista' ? 'var(--text-primary)' : 'var(--text-muted)'
+                                        }}
+                                    >
+                                        Lista
+                                    </button>
+                                    <button
+                                        onClick={() => setSubTabNegocios('historico')}
+                                        style={{
+                                            padding: '8px 20px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s',
+                                            background: subTabNegocios === 'historico' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            color: subTabNegocios === 'historico' ? 'var(--text-primary)' : 'var(--text-muted)'
+                                        }}
+                                    >
+                                        Histórico
+                                    </button>
+                                </div>
                             </div>
 
                             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -1899,7 +1911,7 @@ export default function ComercialPage() {
                                                     <input type="text" className="form-input" value={newClientData.contact_name || ''} onChange={e => setNewClientData({ ...newClientData, contact_name: e.target.value })} placeholder="Ex: João da Silva" />
                                                 </div>
                                                 <div>
-                                                    <label className="form-label">E-mail</label>
+                                                    <label className="form-label">E-mail <span style={{ color: 'var(--accent)' }}>*</span></label>
                                                     <input type="email" className="form-input" value={newClientData.contact_email || ''} onChange={e => setNewClientData({ ...newClientData, contact_email: e.target.value })} placeholder="joao@techsolutions.com" />
                                                 </div>
                                             </div>
@@ -1931,9 +1943,12 @@ export default function ComercialPage() {
                                                 </div>
                                             </div>
 
-                                            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 12 }}>
-                                                <button className="btn btn-secondary" onClick={() => setShowClientModal(false)}>Cancelar</button>
-                                                <button className="btn btn-primary" onClick={handleCreateClient}>Salvar Cliente</button>
+                                            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 12, flexDirection: 'column' }}>
+                                                {leadFormError && <div style={{ color: '#EF4444', fontSize: 13, background: 'rgba(239, 68, 68, 0.1)', padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'center' }}>{leadFormError}</div>}
+                                                <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+                                                    <button className="btn btn-secondary" onClick={() => { setShowClientModal(false); setLeadFormError(''); }}>Cancelar</button>
+                                                    <button className="btn btn-primary" onClick={handleCreateClient}>Salvar Cliente</button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -2474,19 +2489,27 @@ export default function ComercialPage() {
                                                 <input type="date" className="form-input" value={editingDealData.fechamento_previsto ? editingDealData.fechamento_previsto.split('T')[0] : ''} onChange={e => setEditingDealData({ ...editingDealData, fechamento_previsto: e.target.value })} />
                                             </div>
                                         </div>
-                                        <div>
-                                            <label className="form-label">Responsável</label>
-                                            <select className="form-select" value={editingDealData.assignee || ''} onChange={e => {
-                                                const member = teamMembers.find(t => t.id === e.target.value);
-                                                if (member) {
-                                                    setEditingDealData({ ...editingDealData, assignee: member.nome, assignee_color: '#3B82F6' });
-                                                } else {
-                                                    setEditingDealData({ ...editingDealData, assignee: e.target.value });
-                                                }
-                                            }}>
-                                                <option value="">Selecione...</option>
-                                                {teamMembers.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                                            </select>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                            <div>
+                                                <label className="form-label">Fase Atual</label>
+                                                <select className="form-select" value={editingDealData.stage || ''} onChange={e => setEditingDealData({ ...editingDealData, stage: e.target.value as Deal['stage'] })}>
+                                                    {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Responsável</label>
+                                                <select className="form-select" value={editingDealData.assignee || ''} onChange={e => {
+                                                    const member = teamMembers.find(t => t.id === e.target.value);
+                                                    if (member) {
+                                                        setEditingDealData({ ...editingDealData, assignee: member.nome, assignee_color: '#3B82F6' });
+                                                    } else {
+                                                        setEditingDealData({ ...editingDealData, assignee: e.target.value });
+                                                    }
+                                                }}>
+                                                    <option value="">Selecione...</option>
+                                                    {teamMembers.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                                                </select>
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="form-label">Observações</label>

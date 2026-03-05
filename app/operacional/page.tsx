@@ -41,6 +41,14 @@ export default function OperacionalPage() {
     const [filterOpsStatus, setFilterOpsStatus] = useState('');
     const [filterOpsDeadline, setFilterOpsDeadline] = useState(''); // verde, amarelo, vermelho
 
+    const [toastMessage, setToastMessage] = useState('');
+    function showToast(msg: string) {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(''), 3000);
+    }
+
+    const [taskFormError, setTaskFormError] = useState('');
+
     // Combobox state
     const [showNewResponsavelList, setShowNewResponsavelList] = useState(false);
     const [showEditResponsavelList, setShowEditResponsavelList] = useState(false);
@@ -112,6 +120,15 @@ export default function OperacionalPage() {
         const taskId = e.dataTransfer.getData('text');
         const task = tasks.find(t => t.id === taskId);
         if (!task || task.status === statusId) return;
+
+        const isAdmin = user?.categoria === 'Admin Geral';
+        const isResponsavel = task.responsavel_id === user?.nome;
+        const isParticipante = task.participantes_ids?.includes(user?.id || '');
+
+        if (!isAdmin && !isResponsavel && !isParticipante) {
+            showToast('Você não tem permissão para alterar o status desta tarefa.');
+            return;
+        }
         const updatedTask = {
             ...task, status: statusId,
             data_conclusao: statusId === 'Finalizado' ? new Date().toISOString() : task.data_conclusao
@@ -126,18 +143,22 @@ export default function OperacionalPage() {
     }
 
     async function handleCreateTask() {
-        if (!newTask.titulo) return;
+        setTaskFormError('');
+        if (!newTask.titulo) {
+            setTaskFormError('Por favor, informe o título da tarefa.');
+            return;
+        }
         try {
             const created = await addOperationalTask({
-                titulo: newTask.titulo || '',
-                descricao: newTask.descricao,
+                titulo: newTask.titulo,
+                descricao: newTask.descricao || '',
                 dificuldade: newTask.dificuldade,
                 categoria_tarefa: newTask.categoria_tarefa,
-                data_inicio: newTask.data_inicio,
-                data_termino: newTask.data_termino,
+                data_inicio: newTask.data_inicio || null,
+                data_termino: newTask.data_termino || null,
                 tipo: newTask.tipo || 'manual',
                 cliente_nome: newTask.cliente_nome || '',
-                responsavel_id: newTask.responsavel_id,
+                responsavel_id: newTask.responsavel_id || null,
                 status: 'A Fazer',
                 origem: 'manual',
             });
@@ -160,11 +181,32 @@ export default function OperacionalPage() {
 
             setShowNewTaskModal(false);
             setNewTask({ titulo: '', descricao: '', dificuldade: 1, categoria_tarefa: 'Desenvolvimento', tipo: 'manual', cliente_nome: '', status: 'A Fazer', origem: 'manual' });
-        } catch (e) { console.error(e); }
+            showToast('Tarefa criada com sucesso!');
+        } catch (e: any) {
+            console.error(e);
+            setTaskFormError(e.message || 'Erro ao criar tarefa.');
+        }
     }
 
     async function handleSaveEditTask() {
-        if (!editTaskForm.id || !editTaskForm.titulo) return;
+        setTaskFormError('');
+        if (!editTaskForm.id) return;
+
+        const task = tasks.find(t => t.id === editTaskForm.id);
+        if (task) {
+            const isAdmin = user?.categoria === 'Admin Geral';
+            const isResponsavel = task.responsavel_id === user?.nome;
+            const isParticipante = task.participantes_ids?.includes(user?.id || '');
+
+            if (!isAdmin && !isResponsavel && !isParticipante) {
+                setTaskFormError('Você não tem permissão para editar esta tarefa.');
+                return;
+            }
+        }
+        if (!editTaskForm.titulo) {
+            setTaskFormError('Por favor, informe o título da tarefa.');
+            return;
+        }
         try {
             const originalTask = tasks.find(t => t.id === editTaskForm.id);
             const updated = await updateOperationalTask(editTaskForm.id, {
@@ -189,7 +231,11 @@ export default function OperacionalPage() {
             }
 
             setShowEditTaskModal(false);
-        } catch (e) { console.error(e); }
+            showToast('Tarefa atualizada com sucesso!');
+        } catch (e) {
+            console.error(e);
+            setTaskFormError('Erro ao atualizar tarefa.');
+        }
     }
 
     async function handleDeleteTask(taskId: string) {
@@ -198,7 +244,11 @@ export default function OperacionalPage() {
             setTasksData(tasks.filter(t => t.id !== taskId));
             setShowEditTaskModal(false);
             setConfirmDeleteId(null);
-        } catch (e) { console.error(e); }
+            showToast('Tarefa excluída com sucesso!');
+        } catch (e: any) {
+            console.error(e);
+            setTaskFormError('Erro ao excluir tarefa.');
+        }
     }
 
     // Dashboard data
@@ -722,6 +772,7 @@ export default function OperacionalPage() {
                                         }
                                         setTasksData(tasks.filter(t => t.status !== 'Finalizado'));
                                         setConfirmClearHistory(false);
+                                        showToast('Histórico limpo com sucesso!');
                                     }}>Confirmar Limpeza</button>
                                     <button className="btn btn-secondary" style={{ padding: '6px 12px' }} onClick={() => setConfirmClearHistory(false)}>Cancelar</button>
                                 </div>
@@ -885,8 +936,9 @@ export default function OperacionalPage() {
                                     <input type="date" className="form-input" value={newTask.data_termino ? newTask.data_termino.slice(0, 10) : ''} onChange={e => setNewTask({ ...newTask, data_termino: e.target.value })} />
                                 </div>
                             </div>
+                            {taskFormError && <div style={{ color: '#EF4444', fontSize: 13, background: 'rgba(239, 68, 68, 0.1)', padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'center', marginTop: 16 }}>{taskFormError}</div>}
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
-                                <button className="btn btn-secondary" onClick={() => setShowNewTaskModal(false)}>Cancelar</button>
+                                <button className="btn btn-secondary" onClick={() => { setShowNewTaskModal(false); setTaskFormError(''); }}>Cancelar</button>
                                 <button className="btn btn-primary" onClick={handleCreateTask}>Criar Tarefa</button>
                             </div>
                         </div>
@@ -1015,28 +1067,48 @@ export default function OperacionalPage() {
                                     <input type="date" className="form-input" value={editTaskForm.data_termino ? editTaskForm.data_termino.slice(0, 10) : ''} onChange={e => setEditTaskForm({ ...editTaskForm, data_termino: e.target.value })} />
                                 </div>
                             </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                <div>
+                                    <label className="form-label">Status</label>
+                                    <select className="form-select" value={editTaskForm.status || 'A Fazer'} onChange={e => setEditTaskForm({ ...editTaskForm, status: e.target.value as OperationalTask['status'] })}>
+                                        <option value="A Fazer">A Fazer</option>
+                                        <option value="Fazendo">Fazendo</option>
+                                        <option value="Revisando">Revisando</option>
+                                        <option value="Finalizado">Finalizado</option>
+                                    </select>
+                                </div>
+                            </div>
+                            {taskFormError && <div style={{ color: '#EF4444', fontSize: 13, background: 'rgba(239, 68, 68, 0.1)', padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'center' }}>{taskFormError}</div>}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                                 {confirmDeleteId === editTaskForm.id ? (
                                     <>
                                         <div style={{ display: 'flex', gap: 8 }}>
                                             <button className="btn" style={{ padding: '8px 16px', background: 'var(--danger)', color: '#fff', borderRadius: 8 }} onClick={() => handleDeleteTask(editTaskForm.id!)}>Confirmar Exclusão</button>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 12 }}>
                                             <button className="btn btn-secondary" onClick={() => setConfirmDeleteId(null)}>Cancelar</button>
                                         </div>
                                     </>
                                 ) : (
                                     <>
-                                        <button className="btn" style={{ padding: '8px 16px', background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', borderRadius: 8 }} onClick={() => setConfirmDeleteId(editTaskForm.id!)}>Excluir Tarefa</button>
-                                        <div style={{ display: 'flex', gap: 12 }}>
-                                            <button className="btn btn-secondary" onClick={() => setShowEditTaskModal(false)}>Cancelar</button>
-                                            <button className="btn btn-primary" onClick={handleSaveEditTask}>Salvar Alterações</button>
-                                        </div>
+                                        <button className="btn" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', padding: '8px 14px', borderRadius: 8 }} onClick={() => setConfirmDeleteId(editTaskForm.id || null)}>Excluir</button>
                                     </>
                                 )}
                             </div>
+                            <div style={{ display: 'flex', gap: 12 }}>
+                                <button className="btn btn-secondary" onClick={() => { setShowEditTaskModal(false); setTaskFormError(''); }}>Cancelar</button>
+                                <button className="btn btn-primary" onClick={handleSaveEditTask}>Salvar Alterações</button>
+                            </div>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {toastMessage && (
+                <div style={{
+                    position: 'fixed', bottom: 24, right: 24, background: 'var(--accent)', color: '#fff',
+                    padding: '12px 24px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    zIndex: 9999, fontWeight: 500, animation: 'slideIn 0.3s ease-out'
+                }}>
+                    {toastMessage}
                 </div>
             )}
         </div>
