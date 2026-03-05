@@ -72,13 +72,16 @@ export default function FinanceiroPage() {
     useEffect(() => { if (budgetPlanData.length) setBudgetPlan(budgetPlanData); }, [budgetPlanData]);
 
     // Dashboard filters
-    const [dashMonth, setDashMonth] = useState<string>('todos');
-    const [dashYear, setDashYear] = useState<string>('todos');
+    const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+    const currentYear = String(new Date().getFullYear());
+
+    const [dashMonth, setDashMonth] = useState<string>(currentMonth);
+    const [dashYear, setDashYear] = useState<string>(currentYear);
     const [dashCategoria, setDashCategoria] = useState<string>('todos');
 
     // Unified Movimentações filters
-    const [movMonth, setMovMonth] = useState<string>('todos');
-    const [movYear, setMovYear] = useState<string>('todos');
+    const [movMonth, setMovMonth] = useState<string>(currentMonth);
+    const [movYear, setMovYear] = useState<string>(currentYear);
     const [movCategoria, setMovCategoria] = useState<string>('todos');
 
     // Modal state
@@ -545,25 +548,33 @@ export default function FinanceiroPage() {
                 const today = getBahiaDateString();
                 const in30days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-                const pendingTransactions = transactionsData.filter(t => t.status === 'pendente');
+                const filteredPending = transactionsData.filter(item => {
+                    if (item.status !== 'pendente') return false;
+                    const d = new Date(item.data_vencimento);
+                    const itemMonth = String(d.getMonth() + 1).padStart(2, '0');
+                    const itemYear = String(d.getFullYear());
+                    if (dashMonth !== 'todos' && itemMonth !== dashMonth) return false;
+                    if (dashYear !== 'todos' && itemYear !== dashYear) return false;
+                    return true;
+                });
 
-                const vencidosCount = pendingTransactions.filter(t => t.data_vencimento < today).length;
+                const vencidosCount = filteredPending.filter((t: any) => t.data_vencimento < today).length;
 
-                const inadimplencia = pendingTransactions
-                    .filter(a => a.tipo === 'entrada' && a.data_vencimento < today)
-                    .reduce((s, a) => s + Number(a.valor), 0);
+                const inadimplencia = filteredPending
+                    .filter((a: any) => a.tipo === 'entrada' && a.data_vencimento < today)
+                    .reduce((s: number, a: any) => s + Number(a.valor), 0);
 
-                const contasPagar30d = pendingTransactions
-                    .filter(a => a.tipo === 'saida' && a.data_vencimento >= today && a.data_vencimento <= in30days)
-                    .reduce((s, a) => s + Number(a.valor), 0);
+                const contasPagar30d = filteredPending
+                    .filter((a: any) => a.tipo === 'saida' && a.data_vencimento >= today && a.data_vencimento <= in30days)
+                    .reduce((s: number, a: any) => s + Number(a.valor), 0);
 
-                const filterA_receber_pendente = pendingTransactions
-                    .filter(a => a.tipo === 'entrada')
-                    .reduce((s, a) => s + Number(a.valor), 0);
+                const filterA_receber_pendente = filteredPending
+                    .filter((a: any) => a.tipo === 'entrada')
+                    .reduce((s: number, a: any) => s + Number(a.valor), 0);
 
-                const filterA_pagar_pendente = pendingTransactions
-                    .filter(a => a.tipo === 'saida')
-                    .reduce((s, a) => s + Number(a.valor), 0);
+                const filterA_pagar_pendente = filteredPending
+                    .filter((a: any) => a.tipo === 'saida')
+                    .reduce((s: number, a: any) => s + Number(a.valor), 0);
 
                 const entradasCount = filteredDashFlow.filter(i => i.tipo === 'entrada').length;
                 const ticketMedio = entradasCount > 0 ? totalReceita / entradasCount : 0;
@@ -645,7 +656,7 @@ export default function FinanceiroPage() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', flexWrap: 'nowrap', overflowX: 'auto' }}>
                                 <Filter size={14} style={{ color: 'var(--text-muted)' }} />
                                 <select className="form-select" style={{ minWidth: 120, width: 'auto', fontSize: 13, padding: '4px 8px', background: 'transparent', border: 'none' }} value={dashMonth} onChange={e => setDashMonth(e.target.value)}>
-                                    <option value="todos">Todos os meses</option>
+                                    <option value="todos">Ano Inteiro</option>
                                     {MONTH_ORDER.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                                 </select>
                                 <select className="form-select" style={{ minWidth: 100, width: 'auto', fontSize: 13, padding: '4px 8px', background: 'transparent', border: 'none' }} value={dashYear} onChange={e => setDashYear(e.target.value)}>
@@ -931,12 +942,12 @@ export default function FinanceiroPage() {
                 });
 
                 // Summary calculations
-                const pendingItems = unifiedItems.filter(i => i.status !== 'pago_recebido');
-                const completedItems = unifiedItems.filter(i => i.status === 'pago_recebido');
+                const pendingItems = filtered.filter(i => i.status !== 'pago_recebido');
+                const completedItems = filtered.filter(i => i.status === 'pago_recebido');
                 const totalPrevisto = pendingItems.reduce((s, i) => s + i.valor, 0);
                 const totalRealizado = completedItems.reduce((s, i) => s + i.valor, 0);
                 const saldoRealizado = completedItems.filter(i => i.tipo === 'entrada').reduce((s, i) => s + i.valor, 0) - completedItems.filter(i => i.tipo === 'saida').reduce((s, i) => s + i.valor, 0);
-                const proxRecorrencias = unifiedItems.filter(i => i.isRecorrente && i.status !== 'pago_recebido' && i.data_vencimento >= today && i.data_vencimento <= in30days).length;
+                const proxRecorrencias = filtered.filter((i: any) => i.isRecorrente && i.status !== 'pago_recebido').length;
 
                 // All unique categories for filter
                 const allCategories = Array.from(new Set(unifiedItems.map(i => i.categoria).filter(Boolean))).sort();
@@ -1022,7 +1033,7 @@ export default function FinanceiroPage() {
                             </div>
                             <div className="kpi-card">
                                 <div className="kpi-card-value" style={{ color: '#8B5CF6' }}>{proxRecorrencias}</div>
-                                <div className="kpi-card-label">Recorrências (próx. 30d)</div>
+                                <div className="kpi-card-label">Recorrências no Período</div>
                             </div>
                         </div>
 
@@ -1066,7 +1077,7 @@ export default function FinanceiroPage() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
                                 <Filter size={14} style={{ color: 'var(--text-muted)' }} />
                                 <select className="form-select" style={{ minWidth: 120, background: 'transparent', border: 'none', fontSize: 13 }} value={movMonth} onChange={e => setMovMonth(e.target.value)}>
-                                    <option value="todos">Mês</option>
+                                    <option value="todos">Ano Inteiro</option>
                                     {MONTH_ORDER.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                                 </select>
                                 <select className="form-select" style={{ minWidth: 90, background: 'transparent', border: 'none', fontSize: 13 }} value={movYear} onChange={e => setMovYear(e.target.value)}>
