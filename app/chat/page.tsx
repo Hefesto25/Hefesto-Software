@@ -191,25 +191,27 @@ export default function ChatPage() {
     }, [userId]);
 
     // Keyboard shortcut: Cmd+K for search
+    const handleKeyboardShortcuts = useCallback((e: KeyboardEvent) => {
+        // Handle Cmd+K / Ctrl+K for search
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+            e.preventDefault();
+            setShowSearchModal(prev => !prev);
+        }
+        // Handle Escape to close search modal
+        if (e.key === 'Escape' && showSearchModal) {
+            e.preventDefault();
+            setShowSearchModal(false);
+            setSearchModalQuery('');
+        }
+    }, [showSearchModal]);
+
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-                e.preventDefault();
-                setShowSearchModal(prev => !prev);
-            }
-            if (e.key === 'Escape') {
-                setShowSearchModal(false);
-                setSearchModalQuery('');
-            }
-        };
-        // Attach to both window and document for better compatibility
-        window.addEventListener('keydown', handleKeyDown, true);
-        document.addEventListener('keydown', handleKeyDown, true);
+        // Use capture phase to ensure we catch the event early
+        document.addEventListener('keydown', handleKeyboardShortcuts, { capture: true });
         return () => {
-            window.removeEventListener('keydown', handleKeyDown, true);
-            document.removeEventListener('keydown', handleKeyDown, true);
+            document.removeEventListener('keydown', handleKeyboardShortcuts, { capture: true });
         };
-    }, []);
+    }, [handleKeyboardShortcuts]);
 
     // Get current chat context
     const activeCanal = canais.find(c => c.id === activeCanalId);

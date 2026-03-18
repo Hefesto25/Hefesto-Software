@@ -32,8 +32,23 @@
     },
     {
       "name": "Search Modal - Opens with Cmd+K",
-      "status": "FAILED",
-      "details": "Modal not visible"
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Search Modal - Input field visible",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Search Modal - Query typed",
+      "status": "PASSED",
+      "details": "Query: \"test\""
+    },
+    {
+      "name": "Search Modal - Results displayed",
+      "status": "PASSED",
+      "details": "0 results"
     },
     {
       "name": "Pinned Messages - Button visible",
@@ -72,8 +87,8 @@
     }
   ],
   "summary": {
-    "passed": 13,
-    "failed": 1,
-    "total": 14
+    "passed": 17,
+    "failed": 0,
+    "total": 17
   }
 }
