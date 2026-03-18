@@ -5,7 +5,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend, AreaChart, Area, LineChart, Line,
 } from 'recharts';
-import { Plus, Download, Filter, ArrowUpCircle, ArrowDownCircle, Pencil, Trash2, X, Check, CheckCircle, Clock, AlertTriangle, XCircle, CalendarClock, TrendingUp, TrendingDown, FileDown, Sparkles, Search, Copy, RefreshCw, Receipt } from 'lucide-react';
+import { Plus, Download, Filter, ArrowUpCircle, ArrowDownCircle, Pencil, Trash2, X, Check, CheckCircle, Clock, AlertTriangle, XCircle, CalendarClock, TrendingUp, TrendingDown, FileDown, Sparkles, Search, Copy, RefreshCw, Receipt, Upload, Calendar, GitMerge } from 'lucide-react';
 import {
     useGoals,
     useFinancialTypes, useFinancialCategories,
@@ -13,10 +13,13 @@ import {
     addGoal, updateGoal, removeGoal,
     addBudgetPlanItem, updateBudgetPlanItem, removeBudgetPlanItem,
     useFinancialTransactions, addFinancialTransaction, updateFinancialTransaction, removeFinancialTransaction,
-    useClients, useFinancialTaxes, addFinancialTax, updateFinancialTax, removeFinancialTax
+    useClients, useFinancialTaxes, addFinancialTax, updateFinancialTax, removeFinancialTax,
+    useBankImports, saveBankImport, confirmBankImport
 } from '@/lib/hooks';
 import { formatCurrencyInput, parseCurrencyInput, getBahiaDate, getBahiaDateString, formatLocalSystemDate } from '@/lib/utils';
-import type { FinancialGoal, FinancialTransaction, FinancialTax } from '@/lib/types';
+import type { FinancialGoal, FinancialTransaction, FinancialTax, BankImport, BankImportTransaction } from '@/lib/types';
+import { parseOFX, parseSpreadsheet, isDuplicate } from '@/lib/bankParser';
+import type { ParsedTransaction } from '@/lib/bankParser';
 
 function formatCurrency(value: number) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -54,7 +57,7 @@ const MONTH_NAMES: Record<string, string> = {
 
 const PIE_COLORS = ['#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#06B6D4', '#A78BFA', '#F472B6'];
 
-type Tab = 'painel' | 'movimentacoes' | 'planejamento' | 'rentabilidade';
+type Tab = 'painel' | 'movimentacoes' | 'planejamento';
 type MovFilterQuick = 'todos' | 'futuros' | 'concluidos' | 'recorrentes' | 'impostos';
 type LancamentoTipoModal = 'avulso' | 'recorrente' | 'imposto';
 type SubTabPlanejamento = 'dre' | 'metas';
@@ -136,6 +139,31 @@ export default function FinanceiroPage() {
     // Generic Delete Confirm State
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean, targetId: string, type: 'tax' | 'transaction' | 'goal' | 'budget', title: string } | null>(null);
 
+    // Bank Import states
+    const { imports: bankImports } = useBankImports();
+    const [bankImportModal, setBankImportModal] = useState<{
+        isOpen: boolean;
+        banco: BankImport['banco'] | null;
+        formato: BankImport['formato'] | null;
+        parsedTransactions: ParsedTransaction[];
+        importTransactions: BankImportTransaction[];
+        importId: string | null;
+        selectedIds: Set<number>;
+        saving: boolean;
+    }>({
+        isOpen: false, banco: null, formato: null,
+        parsedTransactions: [], importTransactions: [],
+        importId: null, selectedIds: new Set(), saving: false,
+    });
+    const [bankImportError, setBankImportError] = useState('');
+    const [bankImportLoading, setBankImportLoading] = useState(false);
+
+    // Date range filter for Movimentações
+    const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(null);
+    const [showDateRangeModal, setShowDateRangeModal] = useState(false);
+    const [dateRangeFrom, setDateRangeFrom] = useState('');
+    const [dateRangeTo, setDateRangeTo] = useState('');
+
     function openAddTax() {
         setTaxDescricao('');
         setTaxCategoria('');
@@ -196,6 +224,96 @@ export default function FinanceiroPage() {
             refetchTaxes();
             setDeleteConfirm(null);
         } catch (e) { console.error(e); }
+    }
+
+    // ─── Bank Import handlers ───────────────────────────────────────────────────
+
+    async function handleBankFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setBankImportError('');
+        setBankImportLoading(true);
+
+        try {
+            const ext = file.name.split('.').pop()?.toLowerCase();
+            const formato: BankImport['formato'] = ext === 'ofx' ? 'ofx' : (ext === 'csv' ? 'csv' : 'xlsx');
+
+            let parsed: ParsedTransaction[] = [];
+
+            if (formato === 'ofx') {
+                parsed = await parseOFX(file);
+            } else {
+                parsed = await parseSpreadsheet(file);
+            }
+
+            if (parsed.length === 0) {
+                setBankImportError('Nenhuma transação encontrada no arquivo. Verifique se é um extrato válido do Santander ou Mercado Pago.');
+                setBankImportLoading(false);
+                return;
+            }
+
+            // Detect bank from filename or content
+            const nameLower = file.name.toLowerCase();
+            const banco: BankImport['banco'] = nameLower.includes('mercado') || nameLower.includes('mp')
+                ? 'mercado_pago' : 'santander';
+
+            const { importId, importTransactions } = await saveBankImport(banco, formato, parsed);
+
+            // Mark duplicates
+            const withDuplicates = importTransactions.map((tx, i) => ({
+                ...tx,
+                status_reconciliacao: isDuplicate(parsed[i], transactionsData)
+                    ? 'duplicado' as const
+                    : 'novo' as const,
+            }));
+
+            setBankImportModal({
+                isOpen: true, banco, formato,
+                parsedTransactions: parsed,
+                importTransactions: withDuplicates,
+                importId,
+                selectedIds: new Set(withDuplicates.map((_, i) => i).filter(i => withDuplicates[i].status_reconciliacao !== 'duplicado')),
+                saving: false,
+            });
+        } catch (err) {
+            setBankImportError('Erro ao processar arquivo: ' + (err instanceof Error ? err.message : String(err)));
+        } finally {
+            setBankImportLoading(false);
+            e.target.value = '';
+        }
+    }
+
+    async function handleConfirmBankImport() {
+        if (!bankImportModal.importId) return;
+        setBankImportModal(prev => ({ ...prev, saving: true }));
+
+        try {
+            const selected = bankImportModal.importTransactions.filter((_, i) =>
+                bankImportModal.selectedIds.has(i)
+            );
+            await confirmBankImport(bankImportModal.importId, selected, transactionsData);
+            refetchTransactions();
+            setBankImportModal(prev => ({ ...prev, isOpen: false, saving: false }));
+        } catch (err) {
+            setBankImportError('Erro ao confirmar importação: ' + (err instanceof Error ? err.message : String(err)));
+            setBankImportModal(prev => ({ ...prev, saving: false }));
+        }
+    }
+
+    // ─── Date range filter handler ──────────────────────────────────────────────
+
+    function applyDateRange() {
+        if (!dateRangeFrom || !dateRangeTo) return;
+        setDateRange({ from: dateRangeFrom, to: dateRangeTo });
+        setShowDateRangeModal(false);
+    }
+
+    function clearDateRange() {
+        setDateRange(null);
+        setDateRangeFrom('');
+        setDateRangeTo('');
+        setShowDateRangeModal(false);
     }
 
     function openAddTransaction(defaultTipo?: LancamentoTipoModal) {
@@ -481,7 +599,6 @@ export default function FinanceiroPage() {
         { key: 'painel', label: 'Painel' },
         { key: 'movimentacoes', label: 'Movimentações' },
         { key: 'planejamento', label: 'Planejamento' },
-        { key: 'rentabilidade', label: 'Rentabilidade' },
     ];
 
     return (
@@ -821,6 +938,50 @@ export default function FinanceiroPage() {
                             </div>
                         </div>
 
+                        {/* Bank Reconciliation Card */}
+                        {bankImports.length > 0 && (() => {
+                            const lastImport = bankImports[0];
+                            const pendingTransactions = transactionsData.filter(t => t.status === 'pendente').length;
+                            return (
+                                <div className="kpi-card" style={{ marginBottom: 24, borderColor: lastImport.total_conciliadas > 0 ? '#8B5CF644' : 'rgba(255,255,255,0.05)', background: 'rgba(139,92,246,0.04)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <GitMerge size={20} style={{ color: '#8B5CF6' }} />
+                                            <div>
+                                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Última Conciliação Bancária</div>
+                                                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                                                    {lastImport.banco === 'mercado_pago' ? 'Mercado Pago' : 'Santander'} · {lastImport.formato.toUpperCase()} · {new Date(lastImport.data_importacao).toLocaleDateString('pt-BR')}
+                                                    {lastImport.periodo_inicio && lastImport.periodo_fim && (
+                                                        <> · Período: {lastImport.periodo_inicio.split('-').reverse().join('/')} – {lastImport.periodo_fim.split('-').reverse().join('/')}</>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ fontSize: 22, fontWeight: 700, color: '#10B981' }}>{lastImport.total_conciliadas}</div>
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>conciliadas</div>
+                                            </div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ fontSize: 22, fontWeight: 700, color: '#F59E0B' }}>{lastImport.total_transacoes - lastImport.total_conciliadas}</div>
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>não encontradas</div>
+                                            </div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ fontSize: 22, fontWeight: 700, color: pendingTransactions > 0 ? 'var(--warning)' : 'var(--success)' }}>{pendingTransactions}</div>
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>lançamentos pendentes</div>
+                                            </div>
+                                            <button
+                                                onClick={() => { setActiveTab('movimentacoes'); if (lastImport.periodo_inicio && lastImport.periodo_fim) { setDateRangeFrom(lastImport.periodo_inicio); setDateRangeTo(lastImport.periodo_fim); setDateRange({ from: lastImport.periodo_inicio, to: lastImport.periodo_fim }); } }}
+                                                style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #8B5CF644', background: '#8B5CF611', color: '#8B5CF6', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}
+                                            >
+                                                Ver detalhes
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
                         {/* Charts side by side */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
                             {/* Donut: Expenses by Category */}
@@ -979,8 +1140,13 @@ export default function FinanceiroPage() {
                 else if (movQuickFilter === 'recorrentes') filtered = filtered.filter(i => i.isRecorrente);
                 else if (movQuickFilter === 'impostos') filtered = filtered.filter(i => i.isImposto);
 
-                // Apply period filter
-                if (movMonth !== 'todos' || movYear !== 'todos') {
+                // Apply period filter (date range takes priority over month/year)
+                if (dateRange) {
+                    filtered = filtered.filter(item => {
+                        const d = item.data_vencimento;
+                        return d >= dateRange.from && d <= dateRange.to;
+                    });
+                } else if (movMonth !== 'todos' || movYear !== 'todos') {
                     filtered = filtered.filter(item => {
                         const dateParts = item.data_vencimento.split('-');
                         const itemYear = dateParts[0];
@@ -1125,10 +1291,32 @@ export default function FinanceiroPage() {
                                 ))}
                             </div>
 
-                            <button className="btn btn-primary" onClick={() => openAddTransaction()} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Plus size={16} /> Novo Lançamento
-                            </button>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                {/* Bank import button */}
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', cursor: bankImportLoading ? 'wait' : 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--text-muted)', transition: 'all 0.2s', opacity: bankImportLoading ? 0.6 : 1 }}>
+                                    <Upload size={14} />
+                                    {bankImportLoading ? 'Processando...' : 'Importar Extrato'}
+                                    <input
+                                        type="file"
+                                        accept=".ofx,.csv,.xlsx"
+                                        style={{ display: 'none' }}
+                                        onChange={handleBankFileUpload}
+                                        disabled={bankImportLoading}
+                                    />
+                                </label>
+                                <button className="btn btn-primary" onClick={() => openAddTransaction()} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Plus size={16} /> Novo Lançamento
+                                </button>
+                            </div>
                         </div>
+
+                        {/* Bank import error */}
+                        {bankImportError && (
+                            <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: '#EF444422', border: '1px solid #EF444444', color: '#EF4444', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                {bankImportError}
+                                <button onClick={() => setBankImportError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444' }}><X size={14} /></button>
+                            </div>
+                        )}
 
                         {/* Search + Period + Categoria */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -1144,11 +1332,11 @@ export default function FinanceiroPage() {
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
                                 <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-                                <select className="form-select" style={{ minWidth: 120, background: 'transparent', border: 'none', fontSize: 13 }} value={movMonth} onChange={e => setMovMonth(e.target.value)}>
+                                <select className="form-select" style={{ minWidth: 120, background: 'transparent', border: 'none', fontSize: 13, opacity: dateRange ? 0.4 : 1 }} value={movMonth} onChange={e => { setMovMonth(e.target.value); setDateRange(null); }}>
                                     <option value="todos">Ano Inteiro</option>
                                     {MONTH_ORDER.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                                 </select>
-                                <select className="form-select" style={{ minWidth: 90, background: 'transparent', border: 'none', fontSize: 13 }} value={movYear} onChange={e => setMovYear(e.target.value)}>
+                                <select className="form-select" style={{ minWidth: 90, background: 'transparent', border: 'none', fontSize: 13, opacity: dateRange ? 0.4 : 1 }} value={movYear} onChange={e => { setMovYear(e.target.value); setDateRange(null); }}>
                                     <option value="todos">Ano</option>
                                     {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
                                 </select>
@@ -1156,14 +1344,183 @@ export default function FinanceiroPage() {
                                     <option value="todos">Categoria</option>
                                     {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
+                                {/* Date range filter button */}
+                                <button
+                                    onClick={() => setShowDateRangeModal(true)}
+                                    title="Filtrar por período"
+                                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: dateRange ? '1px solid #8B5CF6' : '1px solid rgba(255,255,255,0.08)', background: dateRange ? '#8B5CF622' : 'transparent', color: dateRange ? '#8B5CF6' : 'var(--text-muted)', fontSize: 12, cursor: 'pointer', fontWeight: dateRange ? 600 : 400 }}
+                                >
+                                    <Calendar size={13} />
+                                    {dateRange ? `${dateRange.from.split('-').reverse().join('/')} – ${dateRange.to.split('-').reverse().join('/')}` : 'Período'}
+                                </button>
                             </div>
                         </div>
+
+                        {/* ── Date Range Modal ── */}
+                        {showDateRangeModal && (
+                            <div className="modal-overlay" onClick={() => setShowDateRangeModal(false)}>
+                                <div className="modal-container" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+                                    <div className="modal-header">
+                                        <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Calendar size={16} /> Filtrar por Período</h3>
+                                        <button className="modal-close" onClick={() => setShowDateRangeModal(false)}><X size={18} /></button>
+                                    </div>
+                                    <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                        <div className="form-group">
+                                            <label className="form-label">De</label>
+                                            <input type="date" className="form-input" value={dateRangeFrom} onChange={e => setDateRangeFrom(e.target.value)} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Até</label>
+                                            <input type="date" className="form-input" value={dateRangeTo} onChange={e => setDateRangeTo(e.target.value)} />
+                                        </div>
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button className="btn btn-secondary" onClick={clearDateRange}>Limpar Filtro</button>
+                                        <button className="btn btn-primary" onClick={applyDateRange} disabled={!dateRangeFrom || !dateRangeTo}>Aplicar Filtro</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Bank Import Review Modal ── */}
+                        {bankImportModal.isOpen && (
+                            <div className="modal-overlay">
+                                <div className="modal-container" style={{ maxWidth: 820, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+                                    <div className="modal-header">
+                                        <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <GitMerge size={16} />
+                                            Revisar Extrato — {bankImportModal.banco === 'mercado_pago' ? 'Mercado Pago' : 'Santander'}
+                                            <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>
+                                                ({bankImportModal.selectedIds.size} de {bankImportModal.importTransactions.length} selecionadas)
+                                            </span>
+                                        </h3>
+                                        <button className="modal-close" onClick={() => setBankImportModal(prev => ({ ...prev, isOpen: false }))}><X size={18} /></button>
+                                    </div>
+                                    <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
+                                        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+                                            Selecione as transações que deseja importar. Itens marcados como <span style={{ color: '#F59E0B', fontWeight: 600 }}>Duplicado</span> já existem no sistema.
+                                        </p>
+                                        <table className="data-table">
+                                            <thead>
+                                                <tr>
+                                                    <th style={{ width: 32 }}>
+                                                        <input type="checkbox"
+                                                            checked={bankImportModal.selectedIds.size === bankImportModal.importTransactions.filter(t => t.status_reconciliacao !== 'duplicado').length}
+                                                            onChange={e => {
+                                                                const nonDupIndexes = bankImportModal.importTransactions.map((t, i) => t.status_reconciliacao !== 'duplicado' ? i : -1).filter(i => i >= 0);
+                                                                setBankImportModal(prev => ({ ...prev, selectedIds: e.target.checked ? new Set(nonDupIndexes) : new Set() }));
+                                                            }}
+                                                        />
+                                                    </th>
+                                                    <th>Data</th>
+                                                    <th>Descrição</th>
+                                                    <th>Categoria</th>
+                                                    <th>Tipo</th>
+                                                    <th>Fluxo</th>
+                                                    <th>Valor</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {bankImportModal.importTransactions.map((tx, i) => (
+                                                    <tr key={i} style={{ opacity: bankImportModal.selectedIds.has(i) ? 1 : 0.5 }}>
+                                                        <td>
+                                                            <input type="checkbox"
+                                                                checked={bankImportModal.selectedIds.has(i)}
+                                                                onChange={e => {
+                                                                    const next = new Set(bankImportModal.selectedIds);
+                                                                    if (e.target.checked) next.add(i); else next.delete(i);
+                                                                    setBankImportModal(prev => ({ ...prev, selectedIds: next }));
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td style={{ fontSize: 12 }}>{tx.data.split('-').reverse().join('/')}</td>
+                                                        <td>
+                                                            <input
+                                                                type="text"
+                                                                className="form-input"
+                                                                style={{ padding: '6px 10px', fontSize: 13, width: '100%', minWidth: 200 }}
+                                                                value={tx.descricao}
+                                                                onChange={e => {
+                                                                    const next = [...bankImportModal.importTransactions];
+                                                                    next[i].descricao = e.target.value;
+                                                                    setBankImportModal(prev => ({ ...prev, importTransactions: next }));
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                className="form-select"
+                                                                style={{ padding: '6px 10px', fontSize: 13, width: '100%', minWidth: 120 }}
+                                                                value={tx.categoria || ''}
+                                                                onChange={e => {
+                                                                    const next = [...bankImportModal.importTransactions];
+                                                                    next[i].categoria = e.target.value;
+                                                                    setBankImportModal(prev => ({ ...prev, importTransactions: next }));
+                                                                }}
+                                                            >
+                                                                <option value="" disabled>Selecione...</option>
+                                                                {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                                            </select>
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                className="form-select"
+                                                                style={{ padding: '6px 10px', fontSize: 13, width: '100%', minWidth: 110 }}
+                                                                value={tx.tipo_lancamento || 'avulso'}
+                                                                onChange={e => {
+                                                                    const next = [...bankImportModal.importTransactions];
+                                                                    next[i].tipo_lancamento = e.target.value as any;
+                                                                    setBankImportModal(prev => ({ ...prev, importTransactions: next }));
+                                                                }}
+                                                            >
+                                                                <option value="avulso">Avulso</option>
+                                                                <option value="recorrente">Recorrente</option>
+                                                                <option value="imposto">Imposto</option>
+                                                            </select>
+                                                        </td>
+                                                        <td>
+                                                            <span style={{ color: tx.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontSize: 12 }}>
+                                                                {tx.tipo === 'entrada' ? '↑ Entrada' : '↓ Saída'}
+                                                            </span>
+                                                        </td>
+                                                        <td className={tx.tipo === 'entrada' ? 'positive' : 'negative'} style={{ fontWeight: 600 }}>
+                                                            {tx.tipo === 'entrada' ? '+' : '-'}{formatCurrency(tx.valor)}
+                                                        </td>
+                                                        <td>
+                                                            {tx.status_reconciliacao === 'duplicado'
+                                                                ? <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: '#F59E0B22', color: '#F59E0B' }}>DUPLICADO</span>
+                                                                : <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: '#10B98122', color: '#10B981' }}>NOVO</span>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className="modal-footer">
+                                        <button className="btn btn-secondary" onClick={() => setBankImportModal(prev => ({ ...prev, isOpen: false }))}>Cancelar</button>
+                                        <button
+                                            className="btn btn-primary"
+                                            onClick={handleConfirmBankImport}
+                                            disabled={bankImportModal.saving || bankImportModal.selectedIds.size === 0}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                                        >
+                                            {bankImportModal.saving ? <RefreshCw size={14} className="spin" /> : <Check size={14} />}
+                                            {bankImportModal.saving ? 'Importando...' : `Confirmar ${bankImportModal.selectedIds.size} Transações`}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Unified Table */}
                         <div className="table-card">
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                                 <div className="table-card-title" style={{ marginBottom: 0 }}>
-                                    {movQuickFilter === 'todos' ? 'Todas as Movimentações' : movQuickFilter === 'futuros' ? 'Lançamentos Futuros' : movQuickFilter === 'concluidos' ? 'Lançamentos Concluídos' : movQuickFilter === 'recorrentes' ? 'Recorrências' : 'Impostos'}
+                                    {dateRange
+                                        ? `Período: ${dateRange.from.split('-').reverse().join('/')} – ${dateRange.to.split('-').reverse().join('/')}`
+                                        : movQuickFilter === 'todos' ? 'Todas as Movimentações' : movQuickFilter === 'futuros' ? 'Lançamentos Futuros' : movQuickFilter === 'concluidos' ? 'Lançamentos Concluídos' : movQuickFilter === 'recorrentes' ? 'Recorrências' : 'Impostos'}
                                     <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 13, marginLeft: 8 }}>({filtered.length})</span>
                                 </div>
                             </div>
@@ -1184,32 +1541,94 @@ export default function FinanceiroPage() {
                                     {filtered.length === 0 && (
                                         <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>Nenhum lançamento encontrado.</td></tr>
                                     )}
-                                    {filtered.map(item => (
-                                        <tr key={item.id}>
-                                            <td>{formatLocalSystemDate(item.status === 'pago_recebido' && item.data_pagamento ? item.data_pagamento : item.data_vencimento)}</td>
-                                            <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
-                                            <td><TypeBadge item={item} /></td>
-                                            <td><StatusBadge item={item} /></td>
-                                            <td>{item.categoria || '—'}</td>
-                                            <td>
-                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: item.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                                                    {item.tipo === 'entrada' ? <ArrowUpCircle size={14} /> : <ArrowDownCircle size={14} />}
-                                                    {item.tipo === 'entrada' ? 'RE' : 'DP'}
-                                                </span>
-                                            </td>
-                                            <td className={item.tipo === 'entrada' ? 'positive' : 'negative'}>{item.tipo === 'entrada' ? '+' : '-'}{formatCurrency(item.valor)}</td>
-                                            <td>
-                                                <div style={{ display: 'flex', gap: 4 }}>
-                                                    {item.status !== 'pago_recebido' && (
-                                                        <button className="settings-action-btn" onClick={() => handleQuickPay(item)} title="Marcar como Pago" style={{ color: 'var(--success)' }}><CheckCircle size={13} /></button>
+                                    {(() => {
+                                        let lastMonthStr = '';
+                                        const showHeaders = movMonth === 'todos' || dateRange !== null;
+                                        
+                                        return filtered.map((item) => {
+                                            const itemDate = item.status === 'pago_recebido' && item.data_pagamento ? item.data_pagamento : item.data_vencimento;
+                                            const d = new Date(`${itemDate}T12:00:00`);
+                                            const monthStr = `${MONTH_NAMES[String(d.getMonth() + 1).padStart(2, '0')]} ${d.getFullYear()}`;
+                                            
+                                            const renderHeader = showHeaders && lastMonthStr !== monthStr;
+                                            if (renderHeader) lastMonthStr = monthStr;
+                                            
+                                            return (
+                                                <tr key={item.id} style={{ display: 'table-row' }}>
+                                                    {renderHeader ? (
+                                                        <td colSpan={8} style={{ padding: 0 }}>
+                                                            <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', fontWeight: 600, color: 'var(--text-secondary)', borderTop: '1px solid rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.05)', marginTop: 8 }}>
+                                                                {monthStr}
+                                                            </div>
+                                                            <div style={{ display: 'table', width: '100%' }}>
+                                                                <table className="data-table" style={{ border: 'none', margin: 0, width: '100%' }}>
+                                                                    <tbody style={{ border: 'none' }}>
+                                                                        <tr>
+                                                                            <td style={{ width: '12%' }}>{formatLocalSystemDate(itemDate)}</td>
+                                                                            <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
+                                                                            <td style={{ width: '10%' }}><TypeBadge item={item} /></td>
+                                                                            <td style={{ width: '10%' }}><StatusBadge item={item} /></td>
+                                                                            <td style={{ width: '15%' }}>{item.categoria || '—'}</td>
+                                                                            <td style={{ width: '8%' }}>
+                                                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: item.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                                                                                    {item.tipo === 'entrada' ? <ArrowUpCircle size={14} /> : <ArrowDownCircle size={14} />}
+                                                                                    {item.tipo === 'entrada' ? 'RE' : 'DP'}
+                                                                                </span>
+                                                                            </td>
+                                                                            <td style={{ width: '15%' }} className={item.tipo === 'entrada' ? 'positive' : 'negative'}>{item.tipo === 'entrada' ? '+' : '-'}{formatCurrency(item.valor)}</td>
+                                                                            <td style={{ width: 120 }}>
+                                                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                                                    {item.status !== 'pago_recebido' && (
+                                                                                        <button className="settings-action-btn" onClick={() => handleQuickPay(item)} title="Marcar como Pago" style={{ color: 'var(--success)' }}><CheckCircle size={13} /></button>
+                                                                                    )}
+                                                                                    <button className="settings-action-btn" onClick={() => handleEdit(item)} title="Editar"><Pencil size={13} /></button>
+                                                                                    <button className="settings-action-btn" onClick={() => handleDuplicate(item)} title="Duplicar"><Copy size={13} /></button>
+                                                                                    <button className="settings-action-btn danger" onClick={() => handleDelete(item)} title="Excluir"><Trash2 size={13} /></button>
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </td>
+                                                    ) : (
+                                                        <td colSpan={8} style={{ padding: 0 }}>
+                                                            <div style={{ display: 'table', width: '100%' }}>
+                                                                <table className="data-table" style={{ border: 'none', margin: 0, width: '100%' }}>
+                                                                    <tbody style={{ border: 'none' }}>
+                                                                        <tr>
+                                                                            <td style={{ width: '12%' }}>{formatLocalSystemDate(itemDate)}</td>
+                                                                            <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.descricao}</td>
+                                                                            <td style={{ width: '10%' }}><TypeBadge item={item} /></td>
+                                                                            <td style={{ width: '10%' }}><StatusBadge item={item} /></td>
+                                                                            <td style={{ width: '15%' }}>{item.categoria || '—'}</td>
+                                                                            <td style={{ width: '8%' }}>
+                                                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: item.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                                                                                    {item.tipo === 'entrada' ? <ArrowUpCircle size={14} /> : <ArrowDownCircle size={14} />}
+                                                                                    {item.tipo === 'entrada' ? 'RE' : 'DP'}
+                                                                                </span>
+                                                                            </td>
+                                                                            <td style={{ width: '15%' }} className={item.tipo === 'entrada' ? 'positive' : 'negative'}>{item.tipo === 'entrada' ? '+' : '-'}{formatCurrency(item.valor)}</td>
+                                                                            <td style={{ width: 120 }}>
+                                                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                                                    {item.status !== 'pago_recebido' && (
+                                                                                        <button className="settings-action-btn" onClick={() => handleQuickPay(item)} title="Marcar como Pago" style={{ color: 'var(--success)' }}><CheckCircle size={13} /></button>
+                                                                                    )}
+                                                                                    <button className="settings-action-btn" onClick={() => handleEdit(item)} title="Editar"><Pencil size={13} /></button>
+                                                                                    <button className="settings-action-btn" onClick={() => handleDuplicate(item)} title="Duplicar"><Copy size={13} /></button>
+                                                                                    <button className="settings-action-btn danger" onClick={() => handleDelete(item)} title="Excluir"><Trash2 size={13} /></button>
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </td>
                                                     )}
-                                                    <button className="settings-action-btn" onClick={() => handleEdit(item)} title="Editar"><Pencil size={13} /></button>
-                                                    <button className="settings-action-btn" onClick={() => handleDuplicate(item)} title="Duplicar"><Copy size={13} /></button>
-                                                    <button className="settings-action-btn danger" onClick={() => handleDelete(item)} title="Excluir"><Trash2 size={13} /></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </tr>
+                                            );
+                                        });
+                                    })()}
                                 </tbody>
                             </table>
                         </div>
@@ -1429,50 +1848,6 @@ export default function FinanceiroPage() {
                 )
             }
 
-            {/* ====== ABA RENTABILIDADE ====== */}
-            {
-                activeTab === 'rentabilidade' && (() => {
-                    const activeClients = clients.filter(c => c.status !== 'Inativo');
-                    const rentabilityData = activeClients.map(c => {
-                        const receita = c.monthly_fee || 0;
-                        const custoTotal = (c.hosting_cost || 0) + (c.db_cost || 0) + ((c.hour_value || 0) * (c.operational_hours || 0));
-                        const margemBruta = receita - custoTotal;
-                        const margemPerc = receita > 0 ? (margemBruta / receita) * 100 : 0;
-                        return { id: c.id, name: c.name, receita, custoTotal, margemBruta, margemPerc };
-                    }).sort((a, b) => b.margemBruta - a.margemBruta);
-
-                    const totalR = rentabilityData.reduce((s, c) => s + c.receita, 0);
-                    const totalC = rentabilityData.reduce((s, c) => s + c.custoTotal, 0);
-                    const totalM = totalR - totalC;
-
-                    return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                            <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                                <div className="kpi-card"><div className="kpi-card-value text-success">{formatCurrency(totalR)}</div><div className="kpi-card-label">Receita Estimada</div></div>
-                                <div className="kpi-card"><div className="kpi-card-value text-danger">{formatCurrency(totalC)}</div><div className="kpi-card-label">Custo Operacional</div></div>
-                                <div className="kpi-card"><div className="kpi-card-value">{formatCurrency(totalM)}</div><div className="kpi-card-label">Lucro Bruto</div></div>
-                            </div>
-                            <div className="table-card">
-                                <div className="table-card-title">Rentabilidade por Cliente</div>
-                                <table className="data-table">
-                                    <thead><tr><th>Cliente</th><th>Receita</th><th>Custo</th><th>Margem</th><th>%</th></tr></thead>
-                                    <tbody>
-                                        {rentabilityData.map(c => (
-                                            <tr key={c.id}>
-                                                <td style={{ fontWeight: 500 }}>{c.name}</td>
-                                                <td>{formatCurrency(c.receita)}</td>
-                                                <td className="negative">-{formatCurrency(c.custoTotal)}</td>
-                                                <td style={{ fontWeight: 600 }} className={c.margemBruta >= 0 ? 'positive' : 'negative'}>{formatCurrency(c.margemBruta)}</td>
-                                                <td>{c.margemPerc.toFixed(1)}%</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    );
-                })()
-            }
 
             {/* ====== MODAL UNIFICADO ====== */}
             {transactionModal && (

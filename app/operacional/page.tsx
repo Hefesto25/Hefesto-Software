@@ -1,12 +1,481 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useUsuarios, createNotificationIfEnabled, useClients } from '@/lib/hooks';
+import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useUsuarios, createNotificationIfEnabled, useClients, useSubtarefas, useTodasSubtarefas, addSubtarefa, toggleSubtarefa, removeSubtarefa } from '@/lib/hooks';
 import { useAuth } from '../contexts/AuthContext';
-import { Activity, Clock, CheckCircle2, LayoutDashboard, List, PieChart, Plus, Search as SearchIcon, Eye, Users, ChevronLeft } from 'lucide-react';
+import { Activity, Clock, CheckCircle2, LayoutDashboard, List, PieChart, Plus, Search as SearchIcon, Eye, Users, ChevronLeft, Trash2, X, Calendar, ChevronRight, GripVertical } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell } from 'recharts';
 import type { OperationalTask } from '@/lib/types';
-import { getBahiaDate, getBahiaDateString, formatLocalSystemDate } from '@/lib/utils';
+import { getBahiaDate, getBahiaDateString, formatLocalSystemDate, calcularProgresso } from '@/lib/utils';
+
+function DifficultyDots({ value = 0 }: { value?: number }) {
+  return (
+    <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <div key={i} style={{
+          width: 6, height: 6, borderRadius: '50%',
+          background: i <= value ? 'var(--accent)' : 'rgba(255,255,255,0.15)'
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function AssigneeAvatar({ name, size = 24 }: { name: string; size?: number }) {
+  const initials = name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%',
+      background: 'var(--accent)', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', fontSize: size * 0.4, fontWeight: 600,
+      color: '#fff', flexShrink: 0
+    }} title={name}>
+      {initials}
+    </div>
+  );
+}
+
+interface TaskCardProps {
+  task: OperationalTask;
+  progressInfo: { progresso: number; total: number; concluidas: number } | null;
+  onDragStart: (e: React.DragEvent, task: OperationalTask) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  onClickOpen: (task: OperationalTask) => void;
+  todayStr: string;
+}
+
+function TaskCard({ task, progressInfo, onDragStart, onDragEnd, onClickOpen, todayStr }: TaskCardProps) {
+  const isOverdue = task.data_termino ? task.data_termino < todayStr : false;
+  const deadlineDiff = task.data_termino
+    ? Math.ceil((new Date(task.data_termino).getTime() - new Date(todayStr).getTime()) / 86400000)
+    : null;
+  const deadlineColor = isOverdue ? '#EF4444' : (deadlineDiff !== null && deadlineDiff <= 3) ? '#F59E0B' : 'var(--text-muted)';
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, task)}
+      onDragEnd={onDragEnd}
+      onClick={() => onClickOpen(task)}
+      style={{
+        background: 'var(--bg-primary)',
+        padding: '12px 14px',
+        borderRadius: 10,
+        border: '1px solid var(--border-default)',
+        cursor: 'grab',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.3)';
+        (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-default)';
+      }}
+    >
+      {/* Top: client badge + tags */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{
+          fontSize: 10, fontWeight: 600,
+          background: 'var(--accent-muted)', color: 'var(--accent-light)',
+          padding: '2px 8px', borderRadius: 20, letterSpacing: 0.3
+        }}>
+          {task.cliente_nome || 'Sem Cliente'}
+        </span>
+        {task.categoria_tarefa && (
+          <span style={{ fontSize: 10, background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: 20 }}>
+            {task.categoria_tarefa}
+          </span>
+        )}
+        {task.origem === 'comercial_automatico' && (
+          <span style={{ fontSize: 10, background: 'rgba(139,92,246,0.15)', color: '#A78BFA', padding: '2px 8px', borderRadius: 20 }}>
+            Comercial
+          </span>
+        )}
+      </div>
+
+      {/* Title */}
+      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', lineHeight: 1.4 }}>
+        {task.titulo}
+      </div>
+
+      {/* Description snippet */}
+      {task.descricao && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          {task.descricao.substring(0, 72)}{task.descricao.length > 72 ? '…' : ''}
+        </div>
+      )}
+
+      {/* Footer: assignee + difficulty + deadline */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+        {task.responsavel_id && <AssigneeAvatar name={task.responsavel_id} />}
+        <DifficultyDots value={task.dificuldade} />
+        <div style={{ flex: 1 }} />
+        {task.data_termino && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: deadlineColor }}>
+            <Calendar size={11} />
+            {formatLocalSystemDate(task.data_termino)}
+          </div>
+        )}
+      </div>
+
+      {/* Subtask progress */}
+      {progressInfo && progressInfo.total > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
+              <span>Subtarefas</span>
+              <span>{progressInfo.progresso}%</span>
+          </div>
+          <div style={{ height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{
+              width: `${progressInfo.progresso}%`, height: '100%',
+              background: progressInfo.progresso === 100 ? '#10B981' : 'var(--accent)',
+              transition: 'width 0.4s ease', borderRadius: 2
+            }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface KanbanColumnProps {
+  col: { id: string; label: string; icon: React.ReactNode; color: string };
+  tasks: OperationalTask[];
+  getProgressInfo: (id: string) => { progresso: number; total: number; concluidas: number } | null;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent, status: OperationalTask['status']) => void;
+  onDragStart: (e: React.DragEvent, task: OperationalTask) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  onOpenTask: (task: OperationalTask) => void;
+  todayStr: string;
+  isDoneZone?: boolean;
+}
+
+function KanbanColumn({ col, tasks, getProgressInfo, onDragOver, onDrop, onDragStart, onDragEnd, onOpenTask, todayStr, isDoneZone = false }: KanbanColumnProps) {
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  return (
+    <div
+      style={{
+        minWidth: 300, width: 300,
+        display: 'flex', flexDirection: 'column',
+        background: isDoneZone ? 'rgba(16,185,129,0.04)' : 'var(--bg-secondary)',
+        borderRadius: 12,
+        border: isDragOver ? `2px solid ${col.color}` : isDoneZone ? '2px dashed rgba(16,185,129,0.25)' : '1px solid var(--border-default)',
+        minHeight: '65vh',
+        overflow: 'hidden',
+        transition: 'border-color 0.15s ease',
+        flexShrink: 0,
+      }}
+      onDragOver={(e) => { onDragOver(e); setIsDragOver(true); }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => { onDrop(e, col.id as OperationalTask['status']); setIsDragOver(false); }}
+    >
+      {/* Accent bar */}
+      <div style={{ height: 3, background: col.color, flexShrink: 0 }} />
+
+      {/* Header */}
+      <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-default)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: col.color, fontWeight: 600, fontSize: 13 }}>
+          {col.icon} {col.label}
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 600, background: `${col.color}20`, color: col.color, padding: '2px 8px', borderRadius: 20 }}>
+          {tasks.length}
+        </span>
+      </div>
+
+      {/* Cards */}
+      <div style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+        {isDoneZone ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '40px 16px', textAlign: 'center' }}>
+            <CheckCircle2 size={28} color="rgba(16,185,129,0.3)" />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>Arraste aqui para finalizar.<br />Cards vão para o Histórico.</span>
+          </div>
+        ) : tasks.length === 0 ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '32px 16px', textAlign: 'center', border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 8 }}>
+            <GripVertical size={20} color="rgba(255,255,255,0.12)" />
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Nenhuma tarefa aqui</span>
+          </div>
+        ) : (
+          tasks.map(task => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              progressInfo={getProgressInfo(task.id)}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onClickOpen={onOpenTask}
+              todayStr={todayStr}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TaskDetailPanel({ task, onClose, onTaskUpdate, onEdit, user }: { task: OperationalTask, onClose: () => void, onTaskUpdate: (id: string, updates: Partial<OperationalTask>) => Promise<void>, onEdit: () => void, user: any }) {
+  const { data: subtarefas, refetch } = useSubtarefas(task.id);
+  const [novaSubtarefa, setNovaSubtarefa] = useState('');
+  const [addingSubtask, setAddingSubtask] = useState(false);
+  const [savingSubtask, setSavingSubtask] = useState(false);
+  const [subtaskError, setSubtaskError] = useState('');
+  const progresso = calcularProgresso(subtarefas || []);
+
+  const isAdmin = user?.categoria === 'Admin Geral';
+  const isResponsavel = task.responsavel_id === user?.nome;
+  const isParticipante = task.participantes_ids?.includes(user?.id || '');
+  const canEdit = isAdmin || isResponsavel || isParticipante || true; // fallback: always allow if user is authenticated
+
+  const statusConfig: Record<string, { color: string }> = {
+    'A Fazer': { color: '#F59E0B' },
+    'Fazendo': { color: '#3B82F6' },
+    'Revisando': { color: '#8B5CF6' },
+    'Finalizado': { color: '#10B981' },
+  };
+  const statusColor = statusConfig[task.status]?.color || 'var(--text-muted)';
+
+  const handleAddSubtarefa = async () => {
+    if (!novaSubtarefa.trim()) return;
+    setSavingSubtask(true);
+    setSubtaskError('');
+    try {
+      await addSubtarefa(task.id, novaSubtarefa.trim(), (subtarefas?.length || 0) + 1);
+      setNovaSubtarefa('');
+      setAddingSubtask(false);
+      await refetch();
+    } catch (e: any) {
+      setSubtaskError(e?.message || 'Erro ao salvar subtarefa.');
+    } finally {
+      setSavingSubtask(false);
+    }
+  };
+
+  const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') await handleAddSubtarefa();
+    if (e.key === 'Escape') { setNovaSubtarefa(''); setAddingSubtask(false); setSubtaskError(''); }
+  };
+
+  const handleToggle = async (id: string, concluida: boolean) => {
+    try {
+      await toggleSubtarefa(id, concluida);
+      const novas = (subtarefas || []).map(s => s.id === id ? { ...s, concluida } : s);
+      const novoProgresso = calcularProgresso(novas);
+      if (novoProgresso === 100 && task.status !== 'Finalizado') {
+        await onTaskUpdate(task.id, { status: 'Finalizado', data_conclusao: new Date().toISOString() });
+        onClose();
+      }
+      refetch();
+    } catch (e: any) {
+      console.error('Erro ao atualizar subtarefa:', e);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await removeSubtarefa(id);
+      refetch();
+    } catch (e: any) {
+      console.error('Erro ao remover subtarefa:', e);
+    }
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9998, animation: 'fadeIn 0.2s ease' }} />
+
+      {/* Panel */}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 480,
+        background: 'var(--bg-secondary)',
+        borderLeft: '1px solid var(--border-default)',
+        boxShadow: '-8px 0 40px rgba(0,0,0,0.5)',
+        zIndex: 9999, display: 'flex', flexDirection: 'column',
+        animation: 'slideInRight 0.25s ease-out',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <span style={{ color: 'var(--text-muted)' }}>Operacional</span>
+            <ChevronRight size={12} color="var(--text-muted)" />
+            <span style={{ color: 'var(--accent-light)', fontWeight: 600 }}>{task.cliente_nome || 'Sem Cliente'}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {canEdit && (
+              <button onClick={onEdit} style={{ background: 'var(--accent-muted)', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 6, transition: 'background 0.15s' }}>
+                Editar
+              </button>
+            )}
+            <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 6, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}>
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Title */}
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.4, margin: 0 }}>
+              {task.titulo}
+            </h2>
+
+            {/* Properties Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--border-default)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-default)' }}>
+              <div style={{ background: 'var(--bg-primary)', padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>Status</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor }} />
+                  <span style={{ fontSize: 13, fontWeight: 500, color: statusColor }}>{task.status}</span>
+                </div>
+              </div>
+              <div style={{ background: 'var(--bg-primary)', padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>Dificuldade</div>
+                <DifficultyDots value={task.dificuldade} />
+              </div>
+              <div style={{ background: 'var(--bg-primary)', padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>Responsável</div>
+                {task.responsavel_id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <AssigneeAvatar name={task.responsavel_id} size={22} />
+                    <span style={{ fontSize: 13 }}>{task.responsavel_id}</span>
+                  </div>
+                ) : <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>—</span>}
+              </div>
+              <div style={{ background: 'var(--bg-primary)', padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>Prazo Limite</div>
+                {task.data_termino ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Calendar size={13} color="var(--text-secondary)" />
+                    <span style={{ fontSize: 13 }}>{formatLocalSystemDate(task.data_termino)}</span>
+                  </div>
+                ) : <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>—</span>}
+              </div>
+            </div>
+
+            {/* Description */}
+            {task.descricao && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>Descrição</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, background: 'rgba(255,255,255,0.02)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border-default)', whiteSpace: 'pre-wrap' as const }}>
+                  {task.descricao}
+                </div>
+              </div>
+            )}
+
+            {/* Subtasks */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>Subtarefas</span>
+                  {(subtarefas?.length || 0) > 0 && (
+                    <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--accent-muted)', color: 'var(--accent)', padding: '1px 7px', borderRadius: 20 }}>
+                      {subtarefas?.filter(s => s.concluida).length}/{subtarefas?.length}
+                    </span>
+                  )}
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500 }}>{progresso}%</span>
+              </div>
+
+              {(subtarefas?.length || 0) > 0 && (
+                <div style={{ width: '100%', height: 5, background: 'rgba(255,255,255,0.08)', borderRadius: 3, marginBottom: 12, overflow: 'hidden' }}>
+                  <div style={{ width: `${progresso}%`, height: '100%', background: progresso === 100 ? '#10B981' : 'var(--accent)', transition: 'width 0.4s ease', borderRadius: 3 }} />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {subtarefas?.map(sub => (
+                  <div key={sub.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 10px', borderRadius: 8,
+                    background: sub.concluida ? 'rgba(16,185,129,0.04)' : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${sub.concluida ? 'rgba(16,185,129,0.15)' : 'var(--border-default)'}`,
+                    transition: 'all 0.15s ease',
+                  }}>
+                    <button
+                      onClick={() => handleToggle(sub.id, !sub.concluida)}
+                      disabled={!canEdit}
+                      style={{
+                        width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                        border: sub.concluida ? 'none' : '2px solid rgba(255,255,255,0.25)',
+                        background: sub.concluida ? '#10B981' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: canEdit ? 'pointer' : 'not-allowed',
+                        padding: 0, transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {sub.concluida && (
+                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                          <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </button>
+                    <span style={{ flex: 1, fontSize: 13, color: sub.concluida ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: sub.concluida ? 'line-through' : 'none', transition: 'all 0.2s ease' }}>
+                      {sub.titulo}
+                    </span>
+                    {canEdit && (
+                      <button onClick={() => handleDelete(sub.id)} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'pointer', padding: 4, borderRadius: 4, display: 'flex', transition: 'color 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')}
+                        onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.2)')}>
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {addingSubtask ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input autoFocus type="text" className="form-input" placeholder="Nome da subtarefa..." value={novaSubtarefa} onChange={e => { setNovaSubtarefa(e.target.value); setSubtaskError(''); }} onKeyDown={handleKeyDown} style={{ flex: 1, fontSize: 13, padding: '8px 12px' }} disabled={savingSubtask} />
+                        <button onClick={handleAddSubtarefa} className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 12, opacity: savingSubtask ? 0.7 : 1 }} disabled={savingSubtask}>
+                          {savingSubtask ? '...' : 'Salvar'}
+                        </button>
+                        <button onClick={() => { setNovaSubtarefa(''); setAddingSubtask(false); setSubtaskError(''); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 8 }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                      {subtaskError && <div style={{ fontSize: 12, color: '#EF4444', padding: '4px 2px' }}>{subtaskError}</div>}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setAddingSubtask(true)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', marginTop: 4, background: 'transparent', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 8, color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, transition: 'all 0.15s ease', width: '100%' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                    >
+                      <Plus size={13} /> Adicionar subtarefa
+                    </button>
+                  )
+                }
+              </div>
+            </div>
+
+            {/* Participants */}
+            {task.participantes_ids && task.participantes_ids.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 0.5 }}>Participantes</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {task.participantes_ids.map(pid => <AssigneeAvatar key={pid} name={pid} />)}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      `}} />
+    </>
+  );
+}
 
 const KANBAN_COLUMNS = [
     { id: 'A Fazer', label: 'A Fazer', icon: <Clock size={16} />, color: '#F59E0B' },
@@ -15,10 +484,9 @@ const KANBAN_COLUMNS = [
     { id: 'Finalizado', label: 'Finalizado', icon: <CheckCircle2 size={16} />, color: '#10B981' }
 ];
 
-const DIFICULDADE_LABELS = ['', '⭐', '⭐⭐', '⭐⭐⭐', '⭐⭐⭐⭐', '⭐⭐⭐⭐⭐'];
-
 export default function OperacionalPage() {
     const { data: tasks, loading, setData: setTasksData } = useOperationalTasks();
+    const { data: todasSubtarefas, refetch: refetchSubtarefas } = useTodasSubtarefas();
     const { data: allUsuarios } = useUsuarios();
     const { data: clients, loading: loadingClients } = useClients();
     const { user } = useAuth();
@@ -28,6 +496,7 @@ export default function OperacionalPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [showNewTaskModal, setShowNewTaskModal] = useState(false);
     const [showEditTaskModal, setShowEditTaskModal] = useState(false);
+    const [selectedTaskPanel, setSelectedTaskPanel] = useState<OperationalTask | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [confirmClearHistory, setConfirmClearHistory] = useState(false);
     const [editTaskForm, setEditTaskForm] = useState<Partial<OperationalTask>>({});
@@ -355,24 +824,28 @@ export default function OperacionalPage() {
         return <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} title="No prazo" />;
     };
 
+    const getTaskProgressInfo = (taskId: string) => {
+        const subs = todasSubtarefas.filter(s => s.tarefa_id === taskId);
+        if (subs.length === 0) return null;
+        const prog = calcularProgresso(subs);
+        return { progresso: prog, total: subs.length, concluidas: subs.filter(s => s.concluida).length };
+    };
+
     return (
         <div style={{ paddingBottom: 60 }}>
 
-
             {/* Tabs */}
-            <div className="finance-tabs" style={{ marginBottom: 24 }}>
-                <button className={`finance-tab ${activeTab === 'painel' ? 'active' : ''}`} onClick={() => setActiveTab('painel')}>
-                    Painel
-                </button>
-                <button className={`finance-tab ${activeTab === 'operacoes' ? 'active' : ''}`} onClick={() => setActiveTab('operacoes')}>
-                    Operações
-                </button>
-                <button className={`finance-tab ${activeTab === 'kanban' ? 'active' : ''}`} onClick={() => setActiveTab('kanban')}>
-                    Kanban Geral
-                </button>
-                <button className={`finance-tab ${activeTab === 'historico' ? 'active' : ''}`} onClick={() => setActiveTab('historico')}>
-                    Histórico
-                </button>
+            <div className="finance-tabs">
+{([
+    { key: 'painel', label: 'Painel' },
+    { key: 'operacoes', label: 'Operações' },
+    { key: 'kanban', label: 'Kanban Geral' },
+    { key: 'historico', label: 'Histórico' },
+  ] as { key: typeof activeTab; label: string }[]).map(tab => (
+    <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`finance-tab ${activeTab === tab.key ? 'active' : ''}`}>
+      {tab.label}
+    </button>
+  ))}
             </div>
 
             {/* TAB OPERAÇÕES */}
@@ -389,15 +862,26 @@ export default function OperacionalPage() {
                                         <input type="text" placeholder="Buscar cliente..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                                     </div>
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
                                     {activeClientsFiltered.map(client => {
-                                        const cTasks = kanbanTasks.filter(t => t.cliente_nome === client.name).length;
+                                        const cTasks = kanbanTasks.filter(t => t.cliente_nome === client.name);
+                                        const cOverdue = cTasks.filter(t => t.data_termino && t.data_termino < getBahiaDateString()).length;
                                         return (
-                                            <div key={client.id} className="stat-card" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', transition: 'all 0.2s', border: '1px solid rgba(255,255,255,0.05)' }} onClick={() => setSelectedOpsClient(client)} onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'}>
-                                                <div style={{ fontWeight: 600, fontSize: 15 }}>{client.name}</div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
-                                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: cTasks > 0 ? '#3B82F6' : '#22c55e' }} />
-                                                    {cTasks} tarefas ativas
+                                            <div key={client.id} onClick={() => setSelectedOpsClient(client)}
+                                                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: 12, padding: '16px 20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.2s ease' }}
+                                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'; }}
+                                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-default)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-secondary)'; }}
+                                            >
+                                                <div>
+                                                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{client.name}</div>
+                                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{cTasks.length} tarefas ativas</span>
+                                                        {cOverdue > 0 && <span style={{ fontSize: 11, background: 'var(--danger-muted)', color: 'var(--danger)', padding: '1px 8px', borderRadius: 20, fontWeight: 500 }}>{cOverdue} atrasada{cOverdue > 1 ? 's' : ''}</span>}
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: cTasks.length > 0 ? 'var(--accent)' : '#10B981' }} />
+                                                    <ChevronRight size={16} color="var(--text-muted)" />
                                                 </div>
                                             </div>
                                         );
@@ -447,18 +931,30 @@ export default function OperacionalPage() {
                                                         <th>Status</th>
                                                         <th>Prazo Limite</th>
                                                         <th>Responsável</th>
+                                                        <th style={{ width: 100, textAlign: 'center' }}>Progresso</th>
                                                         <th style={{ width: 60, textAlign: 'center' }}>Prazo</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {visaoGeralTasks[clientName].map(task => {
                                                         const col = KANBAN_COLUMNS.find(c => c.id === task.status);
+                                                        const info = getTaskProgressInfo(task.id);
                                                         return (
-                                                            <tr key={task.id} style={{ cursor: 'pointer' }} onClick={() => { setEditTaskForm(task); setShowEditTaskModal(true); }}>
+                                                            <tr key={task.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedTaskPanel(task)}>
                                                                 <td style={{ fontWeight: 500 }}>{task.titulo}</td>
                                                                 <td><span style={{ color: col?.color, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{col?.icon} {task.status}</span></td>
                                                                 <td>{task.data_termino ? formatLocalSystemDate(task.data_termino) : '-'}</td>
                                                                 <td>{task.responsavel_id || '-'}</td>
+                                                                <td style={{ textAlign: 'center' }}>
+                                                                    {info ? (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                                                                            <div style={{ width: 40, height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+                                                                                <div style={{ width: `${info.progresso}%`, height: '100%', background: '#10B981' }} />
+                                                                            </div>
+                                                                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{info.progresso}%</span>
+                                                                        </div>
+                                                                    ) : '-'}
+                                                                </td>
                                                                 <td style={{ textAlign: 'center' }}>{getDeadlineIndicator(task.data_termino) || '-'}</td>
                                                             </tr>
                                                         );
@@ -480,12 +976,12 @@ export default function OperacionalPage() {
                             {/* Per-Client Kanban Header */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                                    <button className="btn btn-secondary" style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => setSelectedOpsClient(null)}>
+                                    <button className="btn btn-secondary" style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} onClick={() => setSelectedOpsClient(null)}>
                                         <ChevronLeft size={16} /> Voltar
                                     </button>
                                     <h2 className="section-title" style={{ margin: 0 }}>Operações: {selectedOpsClient.name}</h2>
                                 </div>
-                                <button className="btn btn-primary" onClick={() => {
+                                <button className="btn btn-primary" style={{ cursor: 'pointer' }} onClick={() => {
                                     setNewTask({ ...newTask, cliente_nome: selectedOpsClient.name });
                                     setShowNewTaskModal(true);
                                 }}>
@@ -494,56 +990,27 @@ export default function OperacionalPage() {
                             </div>
 
                             {/* Per-Client Kanban Board */}
-                            <div style={{ display: 'flex', gap: 24, overflowX: 'auto', paddingBottom: 16 }}>
-                                {KANBAN_COLUMNS.filter(c => c.id !== 'Finalizado').map(col => {
-                                    const colTasks = kanbanTasks.filter(t => t.status === col.id && t.cliente_nome === selectedOpsClient.name);
-                                    return (
-                                        <div key={col.id} style={{ minWidth: 320, width: 320, display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--bg-secondary)', padding: 16, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', minHeight: '60vh' }}
-                                            onDragOver={onDragOver} onDrop={(e) => onDrop(e, col.id as OperationalTask['status'])}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: col.color, fontWeight: 600 }}>{col.icon} {col.label}</div>
-                                                <span style={{ fontSize: 12, background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: 12, color: 'var(--text-primary)' }}>{colTasks.length}</span>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                                {colTasks.map(task => (
-                                                    <div key={task.id} draggable onDragStart={(e) => onDragStart(e, task)} onDragEnd={onDragEnd} onClick={() => { setEditTaskForm(task); setShowEditTaskModal(true); }}
-                                                        style={{ background: 'var(--bg-primary)', padding: 16, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', cursor: 'grab', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                            <strong style={{ fontSize: 14 }}>{task.titulo}</strong>
-                                                            <div style={{ display: 'flex', gap: 4 }}>
-                                                                {task.origem === 'comercial_automatico' && <span style={{ fontSize: 10, background: 'rgba(139,92,246,0.2)', color: '#8B5CF6', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>Comercial</span>}
-                                                                {task.categoria_tarefa && <span style={{ fontSize: 10, background: 'rgba(59,130,246,0.15)', color: '#3B82F6', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{task.categoria_tarefa}</span>}
-                                                            </div>
-                                                        </div>
-                                                        {task.descricao && <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{task.descricao.substring(0, 80)}{task.descricao.length > 80 ? '...' : ''}</div>}
-                                                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-muted)' }}>
-                                                            {task.responsavel_id && <span>👤 {task.responsavel_id}</span>}
-                                                            {task.dificuldade && <span>Dif: {task.dificuldade}/5</span>}
-                                                        </div>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                                <span>Prazo: {task.data_termino ? formatLocalSystemDate(task.data_termino) : '-'}</span>
-                                                                {getDeadlineIndicator(task.data_termino)}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                {colTasks.length === 0 && <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 8 }}>Mova uma tarefa para cá</div>}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-
-                                {/* Drop zone for Finalizado */}
-                                <div style={{ minWidth: 320, width: 320, display: 'flex', flexDirection: 'column', gap: 12, background: 'rgba(16,185,129,0.05)', padding: 16, borderRadius: 12, border: '2px dashed rgba(16,185,129,0.3)', minHeight: '60vh' }}
-                                    onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'Finalizado')}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#10B981', fontWeight: 600 }}><CheckCircle2 size={16} /> Finalizado</div>
-                                    </div>
-                                    <div style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
-                                        Arraste tarefas aqui para finalizar.<br />Cards finalizados vão para o Histórico.
-                                    </div>
-                                </div>
+                            <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 16, alignItems: 'flex-start' }}>
+                                {KANBAN_COLUMNS.filter(c => c.id !== 'Finalizado').map(col => (
+                                    <KanbanColumn key={col.id} col={col}
+                                        tasks={kanbanTasks.filter(t => t.status === col.id && t.cliente_nome === selectedOpsClient.name)}
+                                        getProgressInfo={getTaskProgressInfo}
+                                        onDragOver={onDragOver} onDrop={onDrop}
+                                        onDragStart={onDragStart} onDragEnd={onDragEnd}
+                                        onOpenTask={setSelectedTaskPanel}
+                                        todayStr={getBahiaDateString()}
+                                    />
+                                ))}
+                                <KanbanColumn
+                                    col={{ id: 'Finalizado', label: 'Finalizado', icon: <CheckCircle2 size={16} />, color: '#10B981' }}
+                                    tasks={[]}
+                                    getProgressInfo={getTaskProgressInfo}
+                                    onDragOver={onDragOver} onDrop={onDrop}
+                                    onDragStart={onDragStart} onDragEnd={onDragEnd}
+                                    onOpenTask={setSelectedTaskPanel}
+                                    todayStr={getBahiaDateString()}
+                                    isDoneZone
+                                />
                             </div>
                         </div>
                     )}
@@ -554,27 +1021,22 @@ export default function OperacionalPage() {
             {activeTab === 'painel' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                     {/* Top Stat Cards */}
-                    <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 24 }}>
-                        <div className="kpi-card" style={{ borderBottom: '3px solid #3B82F6' }}>
-                            <div className="kpi-card-value" style={{ color: '#3B82F6', fontSize: 24 }}>{pendingTasks}</div>
-                            <div className="kpi-card-label">Tarefas em Andamento</div>
-                        </div>
-                        <div className="kpi-card" style={{ borderBottom: '3px solid #10B981' }}>
-                            <div className="kpi-card-value" style={{ color: '#10B981', fontSize: 24 }}>{completedTasksThisMonth}</div>
-                            <div className="kpi-card-label">Concluídas no Mês Atual</div>
-                        </div>
-                        <div className="kpi-card" style={{ borderBottom: '3px solid #F59E0B' }}>
-                            <div className="kpi-card-value" style={{ color: '#F59E0B', fontSize: 24 }}>
-                                {(completedTasksThisMonth + pendingTasks) > 0
-                                    ? Math.round((completedTasksThisMonth / (completedTasksThisMonth + pendingTasks)) * 100)
-                                    : 0}%
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 8 }}>
+                        {[
+                            { value: pendingTasks, label: 'Tarefas em Andamento', color: '#3B82F6', icon: <Activity size={20} /> },
+                            { value: completedTasksThisMonth, label: 'Concluídas no Mês', color: '#10B981', icon: <CheckCircle2 size={20} /> },
+                            { value: `${(completedTasksThisMonth + pendingTasks) > 0 ? Math.round((completedTasksThisMonth / (completedTasksThisMonth + pendingTasks)) * 100) : 0}%`, label: 'Taxa de Conclusão', color: '#F59E0B', icon: <PieChart size={20} /> },
+                            { value: deadlineHealth['Atrasadas'], label: 'Tarefas Atrasadas', color: deadlineHealth['Atrasadas'] > 0 ? '#EF4444' : '#10B981', icon: <Clock size={20} /> },
+                        ].map((kpi, i) => (
+                            <div key={i} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: 12, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', overflow: 'hidden' }}>
+                                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: kpi.color }} />
+                                <div style={{ color: kpi.color, opacity: 0.7 }}>{kpi.icon}</div>
+                                <div>
+                                    <div style={{ fontSize: 28, fontWeight: 700, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{kpi.label}</div>
+                                </div>
                             </div>
-                            <div className="kpi-card-label">Taxa de Conclusão (Mês Atual)</div>
-                        </div>
-                        <div className="kpi-card" style={{ borderBottom: '3px solid #EF4444' }}>
-                            <div className="kpi-card-value" style={{ color: deadlineHealth['Atrasadas'] > 0 ? '#EF4444' : 'var(--text-primary)', fontSize: 24 }}>{deadlineHealth['Atrasadas']}</div>
-                            <div className="kpi-card-label">Tarefas Atrasadas</div>
-                        </div>
+                        ))}
                     </div>
 
                     {/* Middle Section: Upcoming Radar & Deadline Health */}
@@ -595,7 +1057,7 @@ export default function OperacionalPage() {
                                         </thead>
                                         <tbody>
                                             {upcomingDeadlines.map(t => (
-                                                <tr key={t.id} onClick={() => { setEditTaskForm(t); setShowEditTaskModal(true); }} style={{ cursor: 'pointer' }}>
+                                                <tr key={t.id} onClick={() => setSelectedTaskPanel(t)} style={{ cursor: 'pointer' }}>
                                                     <td style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }} title={t.titulo}>{t.titulo}</td>
                                                     <td style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}>{t.cliente_nome || '-'}</td>
                                                     <td>{t.responsavel_id || '-'}</td>
@@ -695,65 +1157,32 @@ export default function OperacionalPage() {
                 <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                         <p className="text-muted" style={{ margin: 0 }}>Arraste os cards entre as colunas para atualizar o status.</p>
-                        <button className="btn btn-primary" onClick={() => setShowNewTaskModal(true)}>
+                        <button className="btn btn-primary" style={{ cursor: 'pointer' }} onClick={() => setShowNewTaskModal(true)}>
                             <Plus size={14} /> Nova Tarefa
                         </button>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 24, overflowX: 'auto', paddingBottom: 16 }}>
-                        {KANBAN_COLUMNS.filter(c => c.id !== 'Finalizado').map(col => {
-                            const colTasks = kanbanTasks.filter(t => t.status === col.id);
-                            return (
-                                <div key={col.id} style={{ minWidth: 320, width: 320, display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--bg-secondary)', padding: 16, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', minHeight: '60vh' }}
-                                    onDragOver={onDragOver} onDrop={(e) => onDrop(e, col.id as OperationalTask['status'])}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: col.color, fontWeight: 600 }}>{col.icon} {col.label}</div>
-                                        <span style={{ fontSize: 12, background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: 12, color: 'var(--text-primary)' }}>{colTasks.length}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                        {colTasks.map(task => (
-                                            <div key={task.id} draggable onDragStart={(e) => onDragStart(e, task)} onDragEnd={onDragEnd} onClick={() => { setEditTaskForm(task); setShowEditTaskModal(true); }}
-                                                style={{ background: 'var(--bg-primary)', padding: 16, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', cursor: 'grab', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexDirection: 'column', gap: 4 }}>
-                                                    <strong style={{ fontSize: 14, color: 'var(--accent-light)' }}>{task.cliente_nome || '-'}</strong>
-                                                    <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{task.titulo}</div>
-                                                    <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                                                        {task.origem === 'comercial_automatico' && (
-                                                            <span style={{ fontSize: 10, background: 'rgba(139,92,246,0.2)', color: '#8B5CF6', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>Comercial</span>
-                                                        )}
-                                                        {task.categoria_tarefa && (
-                                                            <span style={{ fontSize: 10, background: 'rgba(59,130,246,0.15)', color: '#3B82F6', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{task.categoria_tarefa}</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                {task.descricao && <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{task.descricao.substring(0, 80)}{task.descricao.length > 80 ? '...' : ''}</div>}
-                                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-muted)' }}>
-                                                    {task.responsavel_id && <span>👤 {task.responsavel_id}</span>}
-                                                    {task.dificuldade && <span>Dif: {task.dificuldade}/5</span>}
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
-                                                    {task.data_termino && <span style={{ color: task.data_termino < getBahiaDateString() ? '#EF4444' : 'var(--text-muted)' }}>Prazo: {formatLocalSystemDate(task.data_termino)}</span>}
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {colTasks.length === 0 && (
-                                            <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 8 }}>Mova uma tarefa para cá</div>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-
-                        {/* Drop zone for Finalizado (hidden column) */}
-                        <div style={{ minWidth: 320, width: 320, display: 'flex', flexDirection: 'column', gap: 12, background: 'rgba(16,185,129,0.05)', padding: 16, borderRadius: 12, border: '2px dashed rgba(16,185,129,0.3)', minHeight: '60vh' }}
-                            onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'Finalizado')}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#10B981', fontWeight: 600 }}><CheckCircle2 size={16} /> Finalizado</div>
-                            </div>
-                            <div style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
-                                Arraste tarefas aqui para finalizar.<br />Cards finalizados vão para o Histórico.
-                            </div>
-                        </div>
+                    <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 16, alignItems: 'flex-start' }}>
+                        {KANBAN_COLUMNS.filter(c => c.id !== 'Finalizado').map(col => (
+                            <KanbanColumn key={col.id} col={col}
+                                tasks={kanbanTasks.filter(t => t.status === col.id)}
+                                getProgressInfo={getTaskProgressInfo}
+                                onDragOver={onDragOver} onDrop={onDrop}
+                                onDragStart={onDragStart} onDragEnd={onDragEnd}
+                                onOpenTask={setSelectedTaskPanel}
+                                todayStr={getBahiaDateString()}
+                            />
+                        ))}
+                        <KanbanColumn
+                            col={{ id: 'Finalizado', label: 'Finalizado', icon: <CheckCircle2 size={16} />, color: '#10B981' }}
+                            tasks={[]}
+                            getProgressInfo={getTaskProgressInfo}
+                            onDragOver={onDragOver} onDrop={onDrop}
+                            onDragStart={onDragStart} onDragEnd={onDragEnd}
+                            onOpenTask={setSelectedTaskPanel}
+                            todayStr={getBahiaDateString()}
+                            isDoneZone
+                        />
                     </div>
                 </>
             )}
@@ -766,7 +1195,7 @@ export default function OperacionalPage() {
                         {finishedTasks.length > 0 && (
                             confirmClearHistory ? (
                                 <div style={{ display: 'flex', gap: 8 }}>
-                                    <button className="btn" style={{ background: 'var(--danger)', color: '#fff', padding: '6px 12px' }} onClick={async () => {
+                                    <button className="btn" style={{ background: 'var(--danger)', color: '#fff', padding: '6px 12px', cursor: 'pointer' }} onClick={async () => {
                                         for (const t of finishedTasks) {
                                             await removeOperationalTask(t.id);
                                         }
@@ -774,10 +1203,10 @@ export default function OperacionalPage() {
                                         setConfirmClearHistory(false);
                                         showToast('Histórico limpo com sucesso!');
                                     }}>Confirmar Limpeza</button>
-                                    <button className="btn btn-secondary" style={{ padding: '6px 12px' }} onClick={() => setConfirmClearHistory(false)}>Cancelar</button>
+                                    <button className="btn btn-secondary" style={{ padding: '6px 12px', cursor: 'pointer' }} onClick={() => setConfirmClearHistory(false)}>Cancelar</button>
                                 </div>
                             ) : (
-                                <button className="btn btn-secondary" style={{ color: '#EF4444', padding: '6px 12px' }} onClick={() => setConfirmClearHistory(true)}>
+                                <button className="btn btn-secondary" style={{ color: '#EF4444', padding: '6px 12px', cursor: 'pointer' }} onClick={() => setConfirmClearHistory(true)}>
                                     Limpar Histórico
                                 </button>
                             )
@@ -821,7 +1250,7 @@ export default function OperacionalPage() {
                     <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
                         <div className="modal-header">
                             <h2 className="modal-title">Nova Tarefa Operacional</h2>
-                            <button className="modal-close" onClick={() => setShowNewTaskModal(false)}>✕</button>
+                            <button className="modal-close" style={{ cursor: 'pointer' }} onClick={() => setShowNewTaskModal(false)}><X size={16} /></button>
                         </div>
                         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             <div>
@@ -836,7 +1265,7 @@ export default function OperacionalPage() {
                                 <div>
                                     <label className="form-label">Responsável</label>
                                     <div className="combobox-container" ref={newRespRef}>
-                                        <div className={`combobox-trigger ${showNewResponsavelList ? 'active' : ''}`} onClick={() => setShowNewResponsavelList(!showNewResponsavelList)}>
+                                        <div className={`combobox-trigger ${showNewResponsavelList ? 'active' : ''}`} onClick={() => setShowNewResponsavelList(!showNewResponsavelList)} style={{ cursor: 'pointer' }}>
                                             {newTask.responsavel_id ? (
                                                 <span className="combobox-chip">
                                                     {filteredOpUsuarios.find(u => u.nome === newTask.responsavel_id)?.nome || newTask.responsavel_id}
@@ -850,7 +1279,7 @@ export default function OperacionalPage() {
                                                     const isSel = newTask.responsavel_id === u.nome;
                                                     return (
                                                         <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
-                                                            onClick={() => { setNewTask({ ...newTask, responsavel_id: u.nome }); setShowNewResponsavelList(false); }}>
+                                                            onClick={() => { setNewTask({ ...newTask, responsavel_id: u.nome }); setShowNewResponsavelList(false); }} style={{ cursor: 'pointer' }}>
                                                             <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
                                                             <div className="combobox-item-info">
                                                                 <div className="combobox-item-name">{u.nome}</div>
@@ -872,7 +1301,7 @@ export default function OperacionalPage() {
                             <div>
                                 <label className="form-label">Participantes</label>
                                 <div className="combobox-container" ref={newPartRef}>
-                                    <div className={`combobox-trigger ${showNewParticipantesList ? 'active' : ''}`} onClick={() => setShowNewParticipantesList(!showNewParticipantesList)}>
+                                    <div className={`combobox-trigger ${showNewParticipantesList ? 'active' : ''}`} onClick={() => setShowNewParticipantesList(!showNewParticipantesList)} style={{ cursor: 'pointer' }}>
                                         {(newTask.participantes_ids || []).length > 0 ? (
                                             (newTask.participantes_ids || []).map(uid => {
                                                 const u = filteredOpUsuarios.find(x => x.id === uid);
@@ -894,7 +1323,7 @@ export default function OperacionalPage() {
                                                         onClick={() => {
                                                             const ids = newTask.participantes_ids || [];
                                                             setNewTask({ ...newTask, participantes_ids: isSel ? ids.filter(x => x !== u.id) : [...ids, u.id] });
-                                                        }}>
+                                                        }} style={{ cursor: 'pointer' }}>
                                                         <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
                                                         <div className="combobox-item-info">
                                                             <div className="combobox-item-name">{u.nome}</div>
@@ -938,8 +1367,8 @@ export default function OperacionalPage() {
                             </div>
                             {taskFormError && <div style={{ color: '#EF4444', fontSize: 13, background: 'rgba(239, 68, 68, 0.1)', padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'center', marginTop: 16 }}>{taskFormError}</div>}
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
-                                <button className="btn btn-secondary" onClick={() => { setShowNewTaskModal(false); setTaskFormError(''); }}>Cancelar</button>
-                                <button className="btn btn-primary" onClick={handleCreateTask}>Criar Tarefa</button>
+                                <button className="btn btn-secondary" style={{ cursor: 'pointer' }} onClick={() => { setShowNewTaskModal(false); setTaskFormError(''); }}>Cancelar</button>
+                                <button className="btn btn-primary" style={{ cursor: 'pointer' }} onClick={handleCreateTask}>Criar Tarefa</button>
                             </div>
                         </div>
                     </div>
@@ -952,7 +1381,7 @@ export default function OperacionalPage() {
                     <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
                         <div className="modal-header">
                             <h2 className="modal-title">Editar Tarefa Operacional</h2>
-                            <button className="modal-close" onClick={() => setShowEditTaskModal(false)}>✕</button>
+                            <button className="modal-close" style={{ cursor: 'pointer' }} onClick={() => setShowEditTaskModal(false)}><X size={16} /></button>
                         </div>
                         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             <div>
@@ -967,7 +1396,7 @@ export default function OperacionalPage() {
                                 <div>
                                     <label className="form-label">Responsável</label>
                                     <div className="combobox-container" ref={editRespRef}>
-                                        <div className={`combobox-trigger ${showEditResponsavelList ? 'active' : ''}`} onClick={() => setShowEditResponsavelList(!showEditResponsavelList)}>
+                                        <div className={`combobox-trigger ${showEditResponsavelList ? 'active' : ''}`} onClick={() => setShowEditResponsavelList(!showEditResponsavelList)} style={{ cursor: 'pointer' }}>
                                             {editTaskForm.responsavel_id ? (
                                                 <span className="combobox-chip">
                                                     {filteredOpUsuarios.find(u => u.nome === editTaskForm.responsavel_id)?.nome || editTaskForm.responsavel_id}
@@ -981,7 +1410,7 @@ export default function OperacionalPage() {
                                                     const isSel = editTaskForm.responsavel_id === u.nome;
                                                     return (
                                                         <div key={u.id} className={`combobox-item ${isSel ? 'selected' : ''}`}
-                                                            onClick={() => { setEditTaskForm({ ...editTaskForm, responsavel_id: u.nome }); setShowEditResponsavelList(false); }}>
+                                                            onClick={() => { setEditTaskForm({ ...editTaskForm, responsavel_id: u.nome }); setShowEditResponsavelList(false); }} style={{ cursor: 'pointer' }}>
                                                             <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
                                                             <div className="combobox-item-info">
                                                                 <div className="combobox-item-name">{u.nome}</div>
@@ -1003,7 +1432,7 @@ export default function OperacionalPage() {
                             <div>
                                 <label className="form-label">Participantes</label>
                                 <div className="combobox-container" ref={editPartRef}>
-                                    <div className={`combobox-trigger ${showEditParticipantesList ? 'active' : ''}`} onClick={() => setShowEditParticipantesList(!showEditParticipantesList)}>
+                                    <div className={`combobox-trigger ${showEditParticipantesList ? 'active' : ''}`} onClick={() => setShowEditParticipantesList(!showEditParticipantesList)} style={{ cursor: 'pointer' }}>
                                         {(editTaskForm.participantes_ids || []).length > 0 ? (
                                             (editTaskForm.participantes_ids || []).map(uid => {
                                                 const u = filteredOpUsuarios.find(x => x.id === uid);
@@ -1025,7 +1454,7 @@ export default function OperacionalPage() {
                                                         onClick={() => {
                                                             const ids = editTaskForm.participantes_ids || [];
                                                             setEditTaskForm({ ...editTaskForm, participantes_ids: isSel ? ids.filter(x => x !== u.id) : [...ids, u.id] });
-                                                        }}>
+                                                        }} style={{ cursor: 'pointer' }}>
                                                         <div className="combobox-item-avatar">{u.nome.slice(0, 2).toUpperCase()}</div>
                                                         <div className="combobox-item-info">
                                                             <div className="combobox-item-name">{u.nome}</div>
@@ -1083,31 +1512,46 @@ export default function OperacionalPage() {
                                 {confirmDeleteId === editTaskForm.id ? (
                                     <>
                                         <div style={{ display: 'flex', gap: 8 }}>
-                                            <button className="btn" style={{ padding: '8px 16px', background: 'var(--danger)', color: '#fff', borderRadius: 8 }} onClick={() => handleDeleteTask(editTaskForm.id!)}>Confirmar Exclusão</button>
-                                            <button className="btn btn-secondary" onClick={() => setConfirmDeleteId(null)}>Cancelar</button>
+                                            <button className="btn" style={{ padding: '8px 16px', background: 'var(--danger)', color: '#fff', borderRadius: 8, cursor: 'pointer' }} onClick={() => handleDeleteTask(editTaskForm.id!)}>Confirmar Exclusão</button>
+                                            <button className="btn btn-secondary" style={{ cursor: 'pointer' }} onClick={() => setConfirmDeleteId(null)}>Cancelar</button>
                                         </div>
                                     </>
                                 ) : (
                                     <>
-                                        <button className="btn" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', padding: '8px 14px', borderRadius: 8 }} onClick={() => setConfirmDeleteId(editTaskForm.id || null)}>Excluir</button>
+                                        <button className="btn" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', padding: '8px 14px', borderRadius: 8, cursor: 'pointer' }} onClick={() => setConfirmDeleteId(editTaskForm.id || null)}>Excluir</button>
                                     </>
                                 )}
                             </div>
                             <div style={{ display: 'flex', gap: 12 }}>
-                                <button className="btn btn-secondary" onClick={() => { setShowEditTaskModal(false); setTaskFormError(''); }}>Cancelar</button>
-                                <button className="btn btn-primary" onClick={handleSaveEditTask}>Salvar Alterações</button>
+                                <button className="btn btn-secondary" style={{ cursor: 'pointer' }} onClick={() => { setShowEditTaskModal(false); setTaskFormError(''); }}>Cancelar</button>
+                                <button className="btn btn-primary" style={{ cursor: 'pointer' }} onClick={handleSaveEditTask}>Salvar Alterações</button>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
 
+            {selectedTaskPanel && (
+                <TaskDetailPanel
+                    task={selectedTaskPanel}
+                    onClose={() => { setSelectedTaskPanel(null); refetchSubtarefas(); }}
+                    onEdit={() => {
+                        setSelectedTaskPanel(null);
+                        setEditTaskForm(selectedTaskPanel);
+                        setShowEditTaskModal(true);
+                        refetchSubtarefas();
+                    }}
+                    onTaskUpdate={async (id, updates) => {
+                        const updated = await updateOperationalTask(id, updates);
+                        setTasksData(tasks.map(t => t.id === id ? updated : t));
+                    }}
+                    user={user}
+                />
+            )}
+
             {toastMessage && (
-                <div style={{
-                    position: 'fixed', bottom: 24, right: 24, background: 'var(--accent)', color: '#fff',
-                    padding: '12px 24px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    zIndex: 9999, fontWeight: 500, animation: 'slideIn 0.3s ease-out'
-                }}>
+                <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', padding: '12px 20px', borderRadius: 10, boxShadow: '0 8px 30px rgba(0,0,0,0.4)', zIndex: 99999, fontWeight: 500, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10, animation: 'slideInRight 0.3s ease-out' }}>
+                    <CheckCircle2 size={16} color="#10B981" />
                     {toastMessage}
                 </div>
             )}

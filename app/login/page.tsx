@@ -46,8 +46,8 @@ export default function LoginPage() {
                 return;
             }
 
-            // Success — middleware will handle redirect, but push manually too
-            router.push('/');
+            // Success — redirect to chat page
+            router.push('/chat');
         } catch {
             setError('Erro ao conectar. Verifique sua conexão e tente novamente.');
             setLoading(false);

@@ -24,7 +24,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, Receipt, CreditCard, Target, Percent, CheckSquare, Clock } from 'lucide-react';
-import { useFinancialTransactions, useOperationalTasks } from '@/lib/hooks';
+import { useFinancialTransactions, useOperationalTasks, useClients } from '@/lib/hooks';
 import { getBahiaDate } from '@/lib/utils';
 
 // Format utils
@@ -98,12 +98,15 @@ const DEFAULT_LAYOUT = [
   'chart_pie',
   'chart_area',
   'table_summary',
-  'table_margins'
+  'table_margins',
+  'rentabilidade_kpis',
+  'table_rentabilidade'
 ];
 
 export default function DashboardPage() {
   const { data: transactionsData, loading: loadingTransactions } = useFinancialTransactions();
   const { data: tasksData, loading: loadingTasks } = useOperationalTasks();
+  const { data: clients, loading: loadingClients } = useClients();
 
   const [widgetOrder, setWidgetOrder] = useState<string[]>(DEFAULT_LAYOUT);
   const [isClient, setIsClient] = useState(false);
@@ -128,7 +131,7 @@ export default function DashboardPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  if (!isClient || loadingTransactions || loadingTasks) {
+  if (!isClient || loadingTransactions || loadingTasks || loadingClients) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--text-muted)' }}>Carregando Dashboard...</div>;
   }
 
@@ -212,6 +215,20 @@ export default function DashboardPage() {
   const doneTasks = tasksData.filter(t => t.status === 'Finalizado' || t.status === 'concluido').length;
   const inProgressTasks = tasksData.filter(t => t.status === 'Fazendo' || t.status === 'em_andamento' || t.status === 'Revisando').length;
   const productivity = totalTasks > 0 ? ((doneTasks / totalTasks) * 100).toFixed(0) : 0;
+
+  // Rentabilidade calculations
+  const activeClients = clients.filter(c => c.status !== 'Inativo');
+  const rentabilityData = activeClients.map(c => {
+      const rec = c.monthly_fee || 0;
+      const custoTot = (c.hosting_cost || 0) + (c.db_cost || 0) + ((c.hour_value || 0) * (c.operational_hours || 0));
+      const margBruta = rec - custoTot;
+      const margP = rec > 0 ? (margBruta / rec) * 100 : 0;
+      return { id: c.id, name: c.name, receita: rec, custoTotal: custoTot, margemBruta: margBruta, margemPerc: margP };
+  }).sort((a, b) => b.margemBruta - a.margemBruta);
+
+  const totalRentabilidadeReceita = rentabilityData.reduce((s, c) => s + Number(c.receita), 0);
+  const totalRentabilidadeCusto = rentabilityData.reduce((s, c) => s + Number(c.custoTotal), 0);
+  const totalRentabilidadeMargem = totalRentabilidadeReceita - totalRentabilidadeCusto;
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -465,6 +482,75 @@ export default function DashboardPage() {
                     <td className="positive">{row.margem_liquida}%</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </SortableWidget>
+    ),
+    'rentabilidade_kpis': (
+      <SortableWidget id="rentabilidade_kpis" className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4 no-padding" key="rentabilidade_kpis">
+        <div style={{ padding: '24px 24px 0 24px' }}>
+          <div className="chart-card-header" style={{ marginBottom: '16px' }}>
+            <div>
+              <div className="chart-card-title">Rentabilidade da Carteira</div>
+              <div className="chart-card-subtitle">Performance por cliente</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: '0 24px 24px 24px' }} className="kpi-grid">
+            <div className="kpi-card">
+              <div className="kpi-card-header">
+                <div className="kpi-card-icon green"><DollarSign size={20} /></div>
+              </div>
+              <div className="kpi-card-value text-success">{formatCurrency(totalRentabilidadeReceita)}</div>
+              <div className="kpi-card-label">Receita Estimada (MRR)</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-card-header">
+                <div className="kpi-card-icon red"><TrendingDown size={20} /></div>
+              </div>
+              <div className="kpi-card-value text-danger">{formatCurrency(totalRentabilidadeCusto)}</div>
+              <div className="kpi-card-label">Custo Operacional</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-card-header">
+                <div className="kpi-card-icon amber"><Target size={20} /></div>
+              </div>
+              <div className="kpi-card-value">{formatCurrency(totalRentabilidadeMargem)}</div>
+              <div className="kpi-card-label">Lucro Bruto</div>
+            </div>
+        </div>
+      </SortableWidget>
+    ),
+    'table_rentabilidade': (
+      <SortableWidget id="table_rentabilidade" className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4" key="table_rentabilidade">
+        <div style={{ padding: '24px' }}>
+          <div className="table-card-title">Rentabilidade Detalhada</div>
+          <div style={{ overflowX: 'auto', maxHeight: 400, overflowY: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Receita</th>
+                  <th>Custo</th>
+                  <th>Margem</th>
+                  <th>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rentabilityData.map(c => (
+                    <tr key={c.id}>
+                        <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{c.name}</td>
+                        <td className="positive">{formatCurrency(c.receita)}</td>
+                        <td className="negative">-{formatCurrency(c.custoTotal)}</td>
+                        <td style={{ fontWeight: 600 }} className={c.margemBruta >= 0 ? 'positive' : 'negative'}>{formatCurrency(c.margemBruta)}</td>
+                        <td>{c.margemPerc.toFixed(1)}%</td>
+                    </tr>
+                ))}
+                {rentabilityData.length === 0 && (
+                    <tr><td colSpan={5} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>Nenhum cliente ativo.</td></tr>
+                )}
               </tbody>
             </table>
           </div>

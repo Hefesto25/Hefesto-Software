@@ -1,0 +1,79 @@
+{
+  "tests": [
+    {
+      "name": "Authentication - Login successful",
+      "status": "PASSED",
+      "details": "Redirected to /chat"
+    },
+    {
+      "name": "Chat Layout - Main layout rendered",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Chat Elements - Sidebar",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Chat Elements - Messages area",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Chat Elements - Header",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Chat Elements - Message input",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Search Modal - Opens with Cmd+K",
+      "status": "FAILED",
+      "details": "Modal not visible"
+    },
+    {
+      "name": "Pinned Messages - Button visible",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Pinned Messages - Panel opens",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Pinned Messages - Items listed",
+      "status": "PASSED",
+      "details": "No pinned messages yet (expected)"
+    },
+    {
+      "name": "DMs - Button visible",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "DMs - Users list visible",
+      "status": "PASSED",
+      "details": "Users available for DM"
+    },
+    {
+      "name": "Canais - Button visible",
+      "status": "PASSED",
+      "details": ""
+    },
+    {
+      "name": "Canais - Channels listed",
+      "status": "PASSED",
+      "details": "No channels yet (expected)"
+    }
+  ],
+  "summary": {
+    "passed": 13,
+    "failed": 1,
+    "total": 14
+  }
+}

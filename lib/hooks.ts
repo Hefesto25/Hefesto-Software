@@ -7,7 +7,7 @@ import type {
     Canal, CanalParticipante, Mensagem, FinancialData,
     ExpenseCategory, FinancialGoal,
     FinancialType, FinancialCategory, BudgetPlan,
-    FinancialTransaction, SellerGoal, OperationalTask,
+    FinancialTransaction, SellerGoal, OperationalTask, SubtarefaOperacional,
     ClientCRM, MeetingCRM, FeedbackCRM,
     AdminDemand, AdminMeeting, ComercialTask,
     Contract, LegalDocument, LegalPendency,
@@ -24,8 +24,11 @@ import type {
     DiretorioColabDocumento,
     FinancialTax, ComercialCommissionTier,
     ActiveTaskMention,
-    DiretorioFerramentaPredefinida
+    DiretorioFerramentaPredefinida,
+    BankImport, BankImportTransaction
 } from './types';
+import type { ParsedTransaction } from './bankParser';
+import { reconcileTransactions } from './bankParser';
 
 // Generic hook for fetching data from a table
 function useSupabaseTable<T>(
@@ -269,6 +272,75 @@ export async function updateOperationalTask(id: string, updates: Partial<Operati
 
 export async function removeOperationalTask(id: string) {
     const { error } = await supabase.from('tarefas_operacionais').delete().eq('id', id);
+    if (error) throw error;
+}
+
+// Operational Subtasks
+export function useTodasSubtarefas() {
+    const [data, setData] = useState<SubtarefaOperacional[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetch = async () => {
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('subtarefas_operacionais')
+            .select('*');
+        if (error) console.error('Error fetching todas subtarefas:', error);
+        else setData(result ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetch(); }, []);
+    return { data, loading, setData, refetch: fetch };
+}
+
+export function useSubtarefas(tarefaId: string) {
+    const [data, setData] = useState<SubtarefaOperacional[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetch = async () => {
+        if (!tarefaId) { setData([]); setLoading(false); return; }
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('subtarefas_operacionais')
+            .select('*')
+            .eq('tarefa_id', tarefaId)
+            .order('ordem', { ascending: true });
+        if (error) console.error('Error fetching subtarefas:', error);
+        else setData(result ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetch(); }, [tarefaId]);
+    return { data, loading, setData, refetch: fetch };
+}
+
+export async function addSubtarefa(tarefaId: string, titulo: string, ordem: number) {
+    const { data, error } = await supabase
+        .from('subtarefas_operacionais')
+        .insert({ tarefa_id: tarefaId, titulo, ordem })
+        .select()
+        .single();
+    if (error) throw error;
+    return data as SubtarefaOperacional;
+}
+
+export async function toggleSubtarefa(id: string, concluida: boolean) {
+    const { data, error } = await supabase
+        .from('subtarefas_operacionais')
+        .update({ concluida })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as SubtarefaOperacional;
+}
+
+export async function removeSubtarefa(id: string) {
+    const { error } = await supabase
+        .from('subtarefas_operacionais')
+        .delete()
+        .eq('id', id);
     if (error) throw error;
 }
 
@@ -521,6 +593,136 @@ function sanitizeFilename(name: string): string {
 export async function uploadChatFile(file: File, canalId: string) {
     const safeName = sanitizeFilename(file.name);
     const filePath = `${canalId}/${Date.now()}_${safeName}`;
+    const { data, error } = await supabase.storage.from('chat-files').upload(filePath, file, { upsert: false });
+    if (error) return { success: false, error: error.message };
+    const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
+    return { success: true, url: urlData.publicUrl, nome: file.name, tamanho: file.size };
+}
+
+// ============================================================
+// DIRECT MESSAGES (DMs)
+// ============================================================
+
+export function useDMs(userId: string | undefined) {
+    const [data, setData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchDMs = async () => {
+        if (!userId) { setData([]); setLoading(false); return; }
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('dms')
+            .select('*, usuario_a:usuarios!usuario_a_id(id, nome, email, foto_url), usuario_b:usuarios!usuario_b_id(id, nome, email, foto_url)')
+            .or(`usuario_a_id.eq.${userId},usuario_b_id.eq.${userId}`)
+            .order('ultima_mensagem', { ascending: false, nullsFirst: false });
+        if (error) console.error('Error fetching DMs:', error);
+        else setData((result as any[]) ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchDMs(); }, [userId]);
+    return { data, loading, setData, refetch: fetchDMs };
+}
+
+export function useDMMensagens(dmId: string | null) {
+    const [data, setData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchMensagens = async () => {
+        if (!dmId) { setData([]); setLoading(false); return; }
+        setLoading(true);
+        const { data: result, error } = await supabase
+            .from('dm_mensagens')
+            .select('*, autor:usuarios!autor_id(id, nome, email, foto_url)')
+            .eq('dm_id', dmId)
+            .order('created_at', { ascending: true });
+        if (error) console.error('Error fetching DM mensagens:', error);
+        else setData((result as any[]) ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchMensagens(); }, [dmId]);
+    return { data, loading, setData, refetch: fetchMensagens };
+}
+
+export async function getOrCreateDM(outroUsuarioId: string) {
+    const { data: dmId, error } = await supabase
+        .rpc('get_or_create_dm', { outro_usuario_id: outroUsuarioId })
+        .single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, dmId: dmId as string };
+}
+
+export async function sendDMMensagem(payload: {
+    dm_id: string;
+    autor_id: string;
+    conteudo?: string;
+    tipo?: 'texto' | 'imagem' | 'arquivo';
+    arquivo_url?: string;
+    arquivo_nome?: string;
+    arquivo_tamanho?: number;
+}) {
+    const { data, error } = await supabase
+        .from('dm_mensagens')
+        .insert({
+            dm_id: payload.dm_id,
+            autor_id: payload.autor_id,
+            conteudo: payload.conteudo || null,
+            tipo: payload.tipo || 'texto',
+            arquivo_url: payload.arquivo_url || null,
+            arquivo_nome: payload.arquivo_nome || null,
+            arquivo_tamanho: payload.arquivo_tamanho || null,
+        })
+        .select('*, autor:usuarios!autor_id(id, nome, email, foto_url)')
+        .single();
+    if (error) return { success: false, error: error.message };
+
+    // Update last message timestamp
+    await supabase.from('dms').update({ ultima_mensagem: new Date().toISOString() }).eq('id', payload.dm_id);
+
+    return { success: true, mensagem: data };
+}
+
+export async function deleteDMMensagem(id: string) {
+    // 1. Fetch to see if it has a file
+    const { data: msg } = await supabase
+        .from('dm_mensagens')
+        .select('arquivo_url')
+        .eq('id', id)
+        .single();
+
+    // 2. Delete from Storage if needed
+    if (msg?.arquivo_url) {
+        try {
+            const urlObj = new URL(msg.arquivo_url);
+            const pathParts = urlObj.pathname.split('/chat-files/');
+            if (pathParts.length > 1) {
+                const filePath = pathParts[1];
+                await supabase.storage.from('chat-files').remove([filePath]);
+            }
+        } catch (e) {
+            console.error("Error deleting file from storage:", e);
+        }
+    }
+
+    const { error } = await supabase
+        .from('dm_mensagens')
+        .update({ deletada: true, conteudo: null, arquivo_url: null, arquivo_nome: null, arquivo_tamanho: null })
+        .eq('id', id);
+    return { success: !error, error: error?.message };
+}
+
+export async function markDMMessageAsRead(msgId: string) {
+    const { error } = await supabase
+        .from('dm_mensagens')
+        .update({ lida: true, lida_em: new Date().toISOString() })
+        .eq('id', msgId);
+    return { success: !error, error: error?.message };
+}
+
+export async function uploadDMFile(file: File, dmId: string) {
+    const safeName = sanitizeFilename(file.name);
+    const filePath = `dm/${dmId}/${Date.now()}_${safeName}`;
     const { data, error } = await supabase.storage.from('chat-files').upload(filePath, file, { upsert: false });
     if (error) return { success: false, error: error.message };
     const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(data.path);
@@ -1530,4 +1732,225 @@ export async function uploadDiretorioDocumento(file: File, colaboradorId: string
     if (error) throw error;
     const { data: urlData } = supabase.storage.from('diretorio-docs').getPublicUrl(data.path);
     return urlData.publicUrl;
+}
+
+// ===== BANK IMPORTS HOOKS =====
+
+export function useBankImports() {
+    const [imports, setImports] = useState<BankImport[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchImports = async () => {
+            const { data, error } = await supabase
+                .from('bank_imports')
+                .select('*')
+                .order('data_importacao', { ascending: false });
+            if (!error && data) setImports(data as BankImport[]);
+            setLoading(false);
+        };
+        fetchImports();
+    }, []);
+
+    return { imports, loading };
+}
+
+export async function saveBankImport(
+    banco: BankImport['banco'],
+    formato: BankImport['formato'],
+    transactions: ParsedTransaction[]
+): Promise<{ importId: string; importTransactions: BankImportTransaction[] }> {
+    if (transactions.length === 0) throw new Error('Nenhuma transação encontrada no arquivo.');
+
+    const dates = transactions.map((t) => t.data).sort();
+    const periodo_inicio = dates[0];
+    const periodo_fim = dates[dates.length - 1];
+
+    // Create the import record
+    const { data: importData, error: importError } = await supabase
+        .from('bank_imports')
+        .insert({
+            banco,
+            formato,
+            status: 'pendente',
+            total_transacoes: transactions.length,
+            total_conciliadas: 0,
+            periodo_inicio,
+            periodo_fim,
+        })
+        .select()
+        .single();
+
+    if (importError || !importData) throw importError ?? new Error('Erro ao criar import.');
+
+    const importId = (importData as BankImport).id;
+
+    // Insert all parsed transactions
+    const rows = transactions.map((tx) => ({
+        import_id: importId,
+        descricao: tx.descricao,
+        valor: tx.valor,
+        data: tx.data,
+        tipo: tx.tipo,
+        status_reconciliacao: 'novo' as const,
+        selecionado: true,
+    }));
+
+    const { data: txData, error: txError } = await supabase
+        .from('bank_import_transactions')
+        .insert(rows)
+        .select();
+
+    if (txError) throw txError;
+
+    return { importId, importTransactions: (txData ?? []) as BankImportTransaction[] };
+}
+
+export async function confirmBankImport(
+    importId: string,
+    selectedTransactions: BankImportTransaction[],
+    registeredTransactions: FinancialTransaction[]
+): Promise<void> {
+    if (selectedTransactions.length === 0) return;
+
+    const parsedTxs: ParsedTransaction[] = selectedTransactions.map((tx) => ({
+        descricao: tx.descricao,
+        valor: tx.valor,
+        data: tx.data,
+        tipo: tx.tipo,
+    }));
+
+    // Run reconciliation for the existing registered ones
+    const result = reconcileTransactions(parsedTxs, registeredTransactions);
+
+    // Update reconciled registered transactions to 'pago_recebido'
+    for (const { registeredTx } of result.conciliadas) {
+        await supabase
+            .from('financial_transactions')
+            .update({ status: 'pago_recebido', data_pagamento: new Date().toISOString().split('T')[0] })
+            .eq('id', registeredTx.id);
+    }
+    
+    // Process new transactions that weren't reconciled
+    const conciliadasBankTxs = new Set(result.conciliadas.map(c => JSON.stringify({ d: c.bankTx.data, v: c.bankTx.valor, t: c.bankTx.tipo })));
+    const novasTransactions = selectedTransactions.filter(tx => !conciliadasBankTxs.has(JSON.stringify({ d: tx.data, v: tx.valor, t: tx.tipo })));
+
+    for (const bankTx of novasTransactions) {
+        const dataPagamento = new Date().toISOString().split('T')[0];
+        
+        if (bankTx.tipo_lancamento === 'imposto') {
+            await supabase.from('financial_taxes').insert({
+                descricao: bankTx.descricao,
+                categoria: bankTx.categoria || 'Impostos',
+                competencia: bankTx.data.substring(0, 7), // YYYY-MM
+                data_vencimento: bankTx.data,
+                data_pagamento: dataPagamento,
+                valor: bankTx.valor,
+                status: 'Pago'
+            });
+        } else {
+            await supabase.from('financial_transactions').insert({
+                descricao: bankTx.descricao,
+                tipo: bankTx.tipo,
+                valor: bankTx.valor,
+                data_vencimento: bankTx.data,
+                data_pagamento: dataPagamento,
+                status: 'pago_recebido',
+                categoria: bankTx.categoria || 'Sem categoria',
+                grupo_recorrencia: bankTx.tipo_lancamento === 'recorrente' ? crypto.randomUUID() : null,
+                recorrencia: bankTx.tipo_lancamento === 'recorrente' ? 'Mensal' : null
+            });
+        }
+    }
+
+    // Mark import_transactions as conciliado or novo
+    for (const { bankTx, registeredTx } of result.conciliadas) {
+        await supabase
+            .from('bank_import_transactions')
+            .update({ status_reconciliacao: 'conciliado', transaction_id: registeredTx.id })
+            .eq('import_id', importId)
+            .eq('data', bankTx.data)
+            .eq('valor', bankTx.valor)
+            .eq('tipo', bankTx.tipo);
+    }
+
+    // Update import record
+    await supabase
+        .from('bank_imports')
+        .update({
+            status: 'confirmado',
+            total_conciliadas: result.conciliadas.length,
+        })
+        .eq('id', importId);
+}
+
+// ===== MESSAGE SEARCH =====
+export function useSearchMensagens(query: string, userId: string | undefined) {
+    const [results, setResults] = useState<Mensagem[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!query.trim() || query.length < 2 || !userId) {
+            setResults([]);
+            return;
+        }
+
+        setLoading(true);
+        supabase
+            .from('mensagens')
+            .select('*, autor:usuarios!autor_id(id,nome,email,foto_url), canal:canais!canal_id(id,nome)')
+            .ilike('conteudo', `%${query}%`)
+            .eq('deletada', false)
+            .order('created_at', { ascending: false })
+            .limit(50)
+            .then(({ data, error }) => {
+                if (!error && data) {
+                    setResults((data as Mensagem[]) || []);
+                }
+                setLoading(false);
+            });
+    }, [query, userId]);
+
+    return { results, loading };
+}
+
+// ===== PINNED MESSAGES =====
+export function usePinnedMensagens(canalId: string | null) {
+    const [data, setData] = useState<Mensagem[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!canalId) {
+            setData([]);
+            return;
+        }
+
+        setLoading(true);
+        supabase
+            .from('mensagens')
+            .select('*, autor:usuarios!autor_id(id,nome,email,foto_url)')
+            .eq('canal_id', canalId)
+            .eq('pinada', true)
+            .eq('deletada', false)
+            .order('created_at', { ascending: false })
+            .then(({ data: result, error }) => {
+                if (!error && result) {
+                    setData((result as Mensagem[]) || []);
+                }
+                setLoading(false);
+            });
+    }, [canalId]);
+
+    return { data, loading, setData };
+}
+
+export async function pinMensagem(id: string, pinada: boolean) {
+    const { data, error } = await supabase
+        .from('mensagens')
+        .update({ pinada })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as Mensagem;
 }

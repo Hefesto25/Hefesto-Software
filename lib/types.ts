@@ -98,6 +98,7 @@ export interface Mensagem {
     arquivo_tamanho: number | null;
     resposta_de: string | null;
     deletada: boolean;
+    pinada?: boolean;
     created_at: string;
     // Joined fields (populated via select)
     autor?: {
@@ -111,7 +112,54 @@ export interface Mensagem {
         conteudo: string | null;
         autor?: { nome: string };
     };
+    canal?: {
+        id: string;
+        nome: string;
+    };
     mencoes_tarefas?: any[];
+}
+
+export interface DM {
+    id: string;
+    usuario_a_id: string;
+    usuario_b_id: string;
+    criado_em: string;
+    ultima_mensagem: string | null;
+    // Joined fields
+    usuario_a?: {
+        id: string;
+        nome: string;
+        email: string;
+        foto_url: string | null;
+    };
+    usuario_b?: {
+        id: string;
+        nome: string;
+        email: string;
+        foto_url: string | null;
+    };
+}
+
+export interface DMMensagem {
+    id: string;
+    dm_id: string;
+    autor_id: string | null;
+    conteudo: string | null;
+    tipo: 'texto' | 'imagem' | 'arquivo';
+    arquivo_url: string | null;
+    arquivo_nome: string | null;
+    arquivo_tamanho: number | null;
+    lida: boolean;
+    lida_em: string | null;
+    deletada: boolean;
+    created_at: string;
+    // Joined fields
+    autor?: {
+        id: string;
+        nome: string;
+        email: string;
+        foto_url: string | null;
+    };
 }
 
 export interface FinancialData {
@@ -212,6 +260,15 @@ export interface OperationalTask {
     data_criacao?: string;
     data_conclusao?: string;
     observacoes?: string;
+}
+
+export interface SubtarefaOperacional {
+    id: string;
+    tarefa_id: string;
+    titulo: string;
+    concluida: boolean;
+    ordem: number;
+    created_at?: string;
 }
 
 // CRM Entities
@@ -548,5 +605,35 @@ export interface DiretorioColabDocumento {
 export interface DiretorioFerramentaPredefinida {
     id: string;
     name: string;
+    created_at?: string;
+}
+
+// ===== BANK IMPORT MODULE =====
+
+export interface BankImport {
+    id: string;
+    banco: 'mercado_pago' | 'santander';
+    formato: 'ofx' | 'csv' | 'xlsx';
+    data_importacao: string;
+    status: 'pendente' | 'confirmado';
+    total_transacoes: number;
+    total_conciliadas: number;
+    periodo_inicio: string | null;
+    periodo_fim: string | null;
+    created_at?: string;
+}
+
+export interface BankImportTransaction {
+    id: string;
+    import_id: string;
+    descricao: string;
+    valor: number;
+    data: string;
+    tipo: 'entrada' | 'saida';
+    status_reconciliacao: 'novo' | 'duplicado' | 'conciliado' | 'ignorado';
+    transaction_id: string | null;
+    selecionado: boolean;
+    categoria?: string;
+    tipo_lancamento?: 'avulso' | 'recorrente' | 'imposto';
     created_at?: string;
 }

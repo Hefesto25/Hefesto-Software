@@ -66,3 +66,8 @@ export function formatLocalSystemDate(dateStr: string | undefined): string {
 
 export const AVATAR_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#EF4444', '#06B6D4', '#14B8A6', '#6366F1', '#F97316'];
 
+export function calcularProgresso(subtarefas: { concluida: boolean }[]): number {
+    if (!subtarefas || subtarefas.length === 0) return 0;
+    const concluidas = subtarefas.filter(s => s.concluida).length;
+    return Math.round((concluidas / subtarefas.length) * 100);
+}
