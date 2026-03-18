@@ -898,8 +898,8 @@ export default function ChatPage() {
                                 <button className="chat-icon-btn" onClick={() => setModal('participants')} title="Membros"><Users size={16} /></button>
                                 {(activeCanal.criador_id === userId || user?.categoria === 'Admin Geral') && (
                                     <>
-                                        <button className="chat-icon-btn" title="Editar"><Settings size={16} /></button>
-                                        <button className="chat-icon-btn" title="Excluir"><Trash2 size={16} /></button>
+                                        <button className="chat-icon-btn" onClick={() => setModal('edit')} title="Editar"><Settings size={16} /></button>
+                                        <button className="chat-icon-btn" onClick={() => setModal('deleteConfirm')} title="Excluir"><Trash2 size={16} /></button>
                                     </>
                                 )}
                             </div>
@@ -950,6 +950,7 @@ export default function ChatPage() {
                 ) : activeDM && chatMode === 'dms' && otherUser ? (
                     <>
                         <div className="chat-header">
+                            <button className="chat-icon-btn" onClick={() => setActiveDMId(null)} title="Voltar"><ChevronLeft size={18} /></button>
                             <div style={{ width: 32, height: 32, borderRadius: '50%', background: getColor(otherUser.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff' }}>
                                 {getInitials(otherUser.nome)}
                             </div>
