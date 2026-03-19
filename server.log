@@ -150,3 +150,4 @@
 ✓ Compiled in 63ms
  GET / 200 in 1252ms (compile: 495ms, proxy.ts: 157ms, render: 600ms)
  GET /calendario 200 in 960ms (compile: 920ms, proxy.ts: 23ms, render: 16ms)
+✓ Compiled in 165ms
