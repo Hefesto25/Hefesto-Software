@@ -334,7 +334,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <title>HEFESTO IA — Software Interno</title>
         <meta name="description" content="Software interno da HEFESTO IA — Controle financeiro, CRM, comunicação e gestão de projetos." />
-        <link rel="icon" href="/favicon.png" type="image/png" />
+        <link rel="icon" href="/favicon.png" type="image/png" sizes="any" />
+        <link rel="apple-touch-icon" href="/favicon.png" />
       </head>
       <body>
         <AuthProvider>
