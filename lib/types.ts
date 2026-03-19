@@ -50,7 +50,6 @@ export interface Deal {
     probability: number;
     origem?: string;
     fechamento_previsto?: string;
-    data_retorno?: string;
     motivo_perda?: string;
     observacoes?: string;
     data_entrada_etapa?: string;
@@ -513,8 +512,6 @@ export interface DiretorioCliente {
     site?: string;
     status: 'ativo' | 'inativo';
     observacoes?: string;
-    cliente_crm_id?: string;
-    sincronizado_em?: string;
     created_at?: string;
 }
 
@@ -639,30 +636,4 @@ export interface BankImportTransaction {
     categoria?: string;
     tipo_lancamento?: 'avulso' | 'recorrente' | 'imposto';
     created_at?: string;
-}
-
-// ===== NOVO: COMERCIAL OPORTUNIDADES & FUNIL =====
-export interface LeadPerdidoRetorno {
-    id: string;
-    deal_id: string;
-    data_retorno: string; // YYYY-MM-DD
-    motivo_perda: string;
-    observacoes?: string;
-    status: 'agendado' | 'vencido' | 'concluido';
-    created_at: string;
-}
-
-export interface FunilConversaoRow {
-    stage: string;
-    quantidade: number;
-    valor_total: number;
-    taxa_conversao: number; // 0-100
-    dias_medio: number;
-    responsaveis: string[];
-}
-
-export interface FeedbackStats {
-    elogios: number;
-    sugestoes: number;
-    reclamacoes: number;
 }

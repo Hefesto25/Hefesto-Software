@@ -15,8 +15,7 @@ import {
     useCalendarEvents, addCalendarEvent, updateCalendarEvent, removeCalendarEvent,
     useUsuarios, updateUsuario, useSellerGoals, addSellerGoal, removeSellerGoal, useComercialCommissionTiers,
     useComercialTasks, addComercialTask, updateComercialTask, removeComercialTask,
-    sendAssigneeNotificationsAndCalendar,
-    useLeadsPerdidos, useConversaoFunil, useFeedbackStats, updateDealRetorno
+    sendAssigneeNotificationsAndCalendar
 } from '@/lib/hooks';
 import {
     DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, DragStartEvent, DragEndEvent
@@ -28,12 +27,6 @@ import {
     Cell, PieChart as RechartsPie, Pie, Legend, LineChart, Line, ReferenceLine
 } from 'recharts';
 import type { Deal, SellerGoal, ClientCRM, MeetingCRM, FeedbackCRM, ComercialTask } from '@/lib/types';
-import { WidgetLeadsRetorno } from './components/Dashboard/WidgetLeadsRetorno';
-import { WidgetTaxaConversao } from './components/Dashboard/WidgetTaxaConversao';
-import { WidgetFeedbacksRecentes } from './components/Dashboard/WidgetFeedbacksRecentes';
-import { FilaRetornoTab } from './components/FilaRetornoTab/FilaRetornoTab';
-import { FunilConversaoTab } from './components/FunilConversaoTab/FunilConversaoTab';
-import { BadgeFeedback } from './components/ClienteCRM/BadgeFeedback';
 
 const MONTHS = [
     { value: '01', label: 'Janeiro' },
@@ -70,7 +63,7 @@ export function getDaysInStage(dateStr?: string) {
 
 export default function ComercialPage() {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'painel' | 'negocios' | 'time' | 'crm' | 'comissao' | 'tarefas' | 'fila_retorno' | 'funil'>('painel');
+    const [activeTab, setActiveTab] = useState<'painel' | 'negocios' | 'time' | 'crm' | 'comissao' | 'tarefas'>('painel');
     const [subTabNegocios, setSubTabNegocios] = useState<'kanban' | 'lista' | 'historico'>('kanban');
 
     const currentDate = getBahiaDate();
@@ -87,8 +80,6 @@ export default function ComercialPage() {
     const { data: feedbacks, setData: setFeedbacksData } = useFeedbacks();
     const { data: calendarEvents, refetch: refetchCalendarEvents } = useCalendarEvents(user?.id);
     const { data: comercialTasks, refetch: refetchComercialTasks } = useComercialTasks();
-    const { vencidos, proximos7d, proximasemanas } = useLeadsPerdidos() || { vencidos: [], proximos7d: [], proximasemanas: [] };
-    const { data: conversaoData } = useConversaoFunil(getBahiaDateString().substring(0, 7) + '-01', getBahiaDateString()) || { data: [] };
 
     // Tarefas Comercial state
     const [showTarefaModal, setShowTarefaModal] = useState(false);
@@ -104,17 +95,6 @@ export default function ComercialPage() {
         responsaveis_ids: [], participantes_ids: [], data_inicio: '', data_termino: ''
     });
     const [tarefaToast, setTarefaToast] = useState<string | null>(null);
-
-    // Initialize activeTab from query params
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const params = new URLSearchParams(window.location.search);
-            const tab = params.get('tab') as any;
-            if (tab && ['painel', 'negocios', 'time', 'crm', 'comissao', 'tarefas', 'fila_retorno', 'funil'].includes(tab)) {
-                setActiveTab(tab);
-            }
-        }
-    }, []);
 
     // Click-outside handler for Tarefas comboboxes
     useEffect(() => {
@@ -792,18 +772,6 @@ export default function ComercialPage() {
                 >
                     Tarefas
                 </button>
-                <button
-                    className={`finance-tab ${activeTab === 'fila_retorno' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('fila_retorno')}
-                >
-                    Fila de Retorno
-                </button>
-                <button
-                    className={`finance-tab ${activeTab === 'funil' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('funil')}
-                >
-                    Funil
-                </button>
             </div>
 
             {/* TAB PAINEL */}
@@ -883,23 +851,6 @@ export default function ComercialPage() {
                                 <span style={{ color: 'var(--text-muted)' }}>{inactiveClientsCount} inativos de {totalClientsCount}</span>
                             </div>
                         </div>
-                    </div>
-
-                    {/* Novos Widgets Comerciais (Dashboard Hub) */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-                        <WidgetLeadsRetorno
-                            vencidos={vencidos}
-                            proximos7d={proximos7d}
-                            onViewFila={() => setActiveTab('fila_retorno')}
-                        />
-                        <WidgetTaxaConversao
-                            conversaoData={conversaoData}
-                            onViewFunil={() => setActiveTab('funil')}
-                        />
-                        <WidgetFeedbacksRecentes
-                            feedbacks={feedbacks}
-                            onViewFeedbacks={selectedClient ? () => setClientTab('feedbacks') : undefined}
-                        />
                     </div>
 
                     {/* Gráficos */}
@@ -2031,14 +1982,7 @@ export default function ComercialPage() {
                                 <div className="modal-overlay" onClick={() => setSelectedClient(null)}>
                                     <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto' }}>
                                         <div className="modal-header">
-                                            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                {selectedClient.name}
-                                                <BadgeFeedback
-                                                    clientId={selectedClient.id}
-                                                    feedbacks={feedbacks}
-                                                    onOpenFeedbacksTab={() => setClientTab('feedbacks')}
-                                                />
-                                            </h2>
+                                            <h2 className="modal-title">{selectedClient.name}</h2>
                                             <button className="modal-close" onClick={() => setSelectedClient(null)}>✕</button>
                                         </div>
 
@@ -3028,22 +2972,6 @@ export default function ComercialPage() {
                     </div>
                 );
             })()}
-
-            {activeTab === 'fila_retorno' && (
-                <div className="tab-container" style={{ animation: 'fadeIn 0.3s ease' }}>
-                    <FilaRetornoTab
-                        leads={[...vencidos, ...proximos7d, ...proximasemanas]}
-                        onUpdateLead={(leadId, data) => updateDealRetorno(leadId, data as any)}
-                        onDeleteLead={(leadId) => removeDeal(leadId)}
-                    />
-                </div>
-            )}
-
-            {activeTab === 'funil' && (
-                <div className="tab-container" style={{ animation: 'fadeIn 0.3s ease' }}>
-                    <FunilConversaoTab conversaoData={conversaoData} />
-                </div>
-            )}
         </div >
     );
 }

@@ -44,7 +44,7 @@ function formatFileSize(bytes: number) {
     return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-type ModalType = 'create' | 'edit' | 'participants' | 'settings' | 'deleteConfirm' | null;
+type ModalType = 'create' | 'edit' | 'participants' | 'deleteConfirm' | null;
 type ChatMode = 'canais' | 'dms';
 
 export default function ChatPage() {
@@ -222,8 +222,6 @@ export default function ChatPage() {
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const val = e.target.value;
         setMessageText(val);
-        e.target.style.height = 'auto';
-        e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
         const cursorPos = e.target.selectionStart;
         const textBeforeCursor = val.slice(0, cursorPos);
 
@@ -256,7 +254,6 @@ export default function ChatPage() {
         });
 
         setMessageText('');
-        if (inputRef.current) inputRef.current.style.height = 'auto';
         setReplyTo(null);
         setMentionQuery(null);
         setTaskMentionQuery(null);
@@ -362,11 +359,6 @@ export default function ChatPage() {
                                 <span className="chat-message-time">{formatTime(msg.created_at)}</span>
                             </div>
                         )}
-                        {'pinada' in msg && msg.pinada && !msg.deletada && (
-                            <div className="message-pinned-indicator" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent)', background: 'var(--accent-muted)', padding: '2px 6px', borderRadius: 4, width: 'fit-content', marginBottom: 4 }}>
-                                <Pin size={12} style={{ fill: 'currentColor' }} /> <span style={{ fontWeight: 600 }}>Fixado</span>
-                            </div>
-                        )}
                         {msg.deletada ? (
                             <div className="chat-message-text deleted-text">Mensagem apagada</div>
                         ) : msg.tipo === 'imagem' && msg.arquivo_url ? (
@@ -395,16 +387,12 @@ export default function ChatPage() {
                                     <button
                                         onClick={async () => {
                                             const msgTyped = msg as Mensagem;
+                                            await pinMensagem(msgTyped.id, !msgTyped.pinada);
                                             if (!msgTyped.pinada) {
-                                                if (pinnedMensagens.length > 0) {
-                                                    await pinMensagem(pinnedMensagens[0].id, false);
-                                                }
-                                                await pinMensagem(msgTyped.id, true);
                                                 const updated = { ...msgTyped, pinada: true };
-                                                setPinnedMensagens([updated]);
+                                                setPinnedMensagens([updated, ...pinnedMensagens]);
                                             } else {
-                                                await pinMensagem(msgTyped.id, false);
-                                                setPinnedMensagens([]);
+                                                setPinnedMensagens(pinnedMensagens.filter(m => m.id !== msgTyped.id));
                                             }
                                         }}
                                         title={(msg as Mensagem).pinada ? 'Desafixar' : 'Afixar'}
@@ -628,50 +616,6 @@ export default function ChatPage() {
                 </div>
             )}
 
-            {/* Members Modal */}
-            {modal === 'participants' && activeCanal && (
-                <MembersModal 
-                    activeCanalId={activeCanalId} 
-                    activeCanal={activeCanal} 
-                    allUsuarios={allUsuarios} 
-                    participantes={participantes} 
-                    userId={userId} 
-                    user={user} 
-                    onClose={() => setModal(null)} 
-                    refetchParticipantes={refetchParticipantes} 
-                    addParticipante={addParticipante} 
-                    removeParticipante={removeParticipante} 
-                />
-            )}
-
-            {/* Settings Modal */}
-            {(modal === 'settings' || modal === 'edit') && activeCanal && (
-                <SettingsModal 
-                    activeCanalId={activeCanalId} 
-                    activeCanal={activeCanal} 
-                    userId={userId} 
-                    user={user} 
-                    onClose={() => setModal(null)} 
-                    refetchCanais={refetchCanais} 
-                    setModal={setModal} 
-                    updateCanal={updateCanal} 
-                />
-            )}
-
-            {/* Delete Confirm Modal */}
-            {modal === 'deleteConfirm' && activeCanal && (
-                <DeleteConfirmModal 
-                    activeCanalId={activeCanalId} 
-                    activeCanal={activeCanal} 
-                    userId={userId} 
-                    user={user} 
-                    onClose={() => setModal(null)} 
-                    refetchCanais={refetchCanais} 
-                    deleteCanal={deleteCanal} 
-                    setChatMode={setChatMode} 
-                />
-            )}
-
             {/* Sidebar */}
             <nav className="chat-channels" role="navigation" aria-label="Navegação de chat">
                 {/* Header com user info */}
@@ -742,119 +686,98 @@ export default function ChatPage() {
                 {/* Content */}
                 {chatMode === 'dms' ? (
                     <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-                        {(() => {
-                            const availableUsers = allUsuarios?.filter(u => {
-                                if (u.id === userId) return false;
-                                if (searchQuery && !u.nome.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-                                const alreadyHasDM = dms.some(dm => 
-                                    dm.usuario_a_id === u.id || dm.usuario_b_id === u.id
-                                );
-                                return !alreadyHasDM;
-                            }) || [];
-
-                            if (filteredDMs.length === 0 && availableUsers.length === 0) {
-                                return (
+                        {filteredDMs.length === 0 ? (
+                            <div>
+                                {searchQuery ? (
                                     <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                                        {searchQuery ? 'Nenhuma conversa ou usuário encontrado' : 'Nenhum usuário disponível'}
+                                        Nenhuma conversa encontrada
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)' }}>
+                                            Usuários Disponíveis
+                                        </div>
+                                        {allUsuarios?.filter(u => u.id !== userId).map(usuario => (
+                                            <button
+                                                key={usuario.id}
+                                                onClick={async () => {
+                                                    const result = await getOrCreateDM(usuario.id);
+                                                    if (result.success && result.dmId) {
+                                                        setActiveDMId(result.dmId);
+                                                        refetchDMs();
+                                                    } else {
+                                                        alert('Erro ao iniciar conversa: ' + result.error);
+                                                    }
+                                                }}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '12px 16px',
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    borderBottom: '1px solid var(--border-default)',
+                                                    color: 'var(--text-primary)',
+                                                    textAlign: 'left',
+                                                    cursor: 'pointer',
+                                                    fontSize: 13,
+                                                    transition: 'background 0.2s'
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                aria-label={`Iniciar conversa com ${usuario.nome}`}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: getColor(usuario.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                                                        {getInitials(usuario.nome)}
+                                                    </div>
+                                                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                        <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{usuario.nome}</div>
+                                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{usuario.email}</div>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            filteredDMs.map(dm => {
+                                const otherUserId = dm.usuario_a_id === userId ? dm.usuario_b_id : dm.usuario_a_id;
+                                const otherUserData = dm.usuario_a_id === userId ? dm.usuario_b : dm.usuario_a;
+                                const isActive = activeDMId === dm.id;
+                                return (
+                                    <div
+                                        key={dm.id}
+                                        onClick={() => setActiveDMId(dm.id)}
+                                        style={{
+                                            padding: '8px 12px',
+                                            margin: '2px 6px',
+                                            borderRadius: 8,
+                                            background: isActive ? 'var(--accent-muted)' : 'transparent',
+                                            color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 10
+                                        }}
+                                        onMouseEnter={e => !isActive && (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                                        onMouseLeave={e => !isActive && (e.currentTarget.style.background = 'transparent')}
+                                    >
+                                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: getColor(otherUserData?.nome || ''), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                                            {getInitials(otherUserData?.nome || '')}
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: 13, fontWeight: 500, color: 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {otherUserData?.nome}
+                                            </div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                Ativo agora
+                                            </div>
+                                        </div>
                                     </div>
                                 );
-                            }
-
-                            return (
-                                <>
-                                    {filteredDMs.length > 0 && (
-                                        <div style={{ marginBottom: 16 }}>
-                                            <div style={{ padding: '4px 16px 8px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
-                                                Conversas Ativas
-                                            </div>
-                                            {filteredDMs.map(dm => {
-                                                const otherUserData = dm.usuario_a_id === userId ? dm.usuario_b : dm.usuario_a;
-                                                const isActive = activeDMId === dm.id;
-                                                return (
-                                                    <div
-                                                        key={dm.id}
-                                                        onClick={() => setActiveDMId(dm.id)}
-                                                        style={{
-                                                            padding: '8px 12px',
-                                                            margin: '2px 6px',
-                                                            borderRadius: 8,
-                                                            background: isActive ? 'var(--accent-muted)' : 'transparent',
-                                                            color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                                                            cursor: 'pointer',
-                                                            transition: 'all 0.2s',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: 10
-                                                        }}
-                                                        onMouseEnter={e => !isActive && (e.currentTarget.style.background = 'var(--bg-secondary)')}
-                                                        onMouseLeave={e => !isActive && (e.currentTarget.style.background = 'transparent')}
-                                                    >
-                                                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: getColor(otherUserData?.nome || ''), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                                                            {getInitials(otherUserData?.nome || '')}
-                                                        </div>
-                                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                                            <div style={{ fontSize: 13, fontWeight: 500, color: 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                {otherUserData?.nome}
-                                                            </div>
-                                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                Ativo agora
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-
-                                    {availableUsers.length > 0 && (
-                                        <div>
-                                            <div style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', borderTop: filteredDMs.length > 0 ? '1px solid var(--border-default)' : 'none', borderBottom: '1px solid var(--border-default)' }}>
-                                                Usuários Disponíveis
-                                            </div>
-                                            {availableUsers.map(usuario => (
-                                                <button
-                                                    key={usuario.id}
-                                                    onClick={async () => {
-                                                        const result = await getOrCreateDM(usuario.id);
-                                                        if (result.success && result.dmId) {
-                                                            setActiveDMId(result.dmId);
-                                                            refetchDMs();
-                                                        } else {
-                                                            alert('Erro ao iniciar conversa: ' + result.error);
-                                                        }
-                                                    }}
-                                                    style={{
-                                                        width: '100%',
-                                                        padding: '12px 16px',
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        borderBottom: '1px solid var(--border-default)',
-                                                        color: 'var(--text-primary)',
-                                                        textAlign: 'left',
-                                                        cursor: 'pointer',
-                                                        fontSize: 13,
-                                                        transition: 'background 0.2s'
-                                                    }}
-                                                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                                    aria-label={`Iniciar conversa com ${usuario.nome}`}
-                                                >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: getColor(usuario.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                                                            {getInitials(usuario.nome)}
-                                                        </div>
-                                                        <div style={{ flex: 1, overflow: 'hidden' }}>
-                                                            <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{usuario.nome}</div>
-                                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{usuario.email}</div>
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </>
-                            );
-                        })()}
+                            })
+                        )}
                     </div>
                 ) : (
                     <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
@@ -882,8 +805,8 @@ export default function ChatPage() {
                                             alignItems: 'center',
                                             gap: 8
                                         }}
-                                        onMouseEnter={e => activeCanalId !== canal.id && (e.currentTarget.style.background = 'var(--bg-secondary)')}
-                                        onMouseLeave={e => activeCanalId !== canal.id && (e.currentTarget.style.background = 'transparent')}
+                                        onMouseEnter={e => !activeCanalId === canal.id && (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                                        onMouseLeave={e => !activeCanalId === canal.id && (e.currentTarget.style.background = 'transparent')}
                                     >
                                         <Hash size={14} />
                                         <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -915,8 +838,8 @@ export default function ChatPage() {
                                             alignItems: 'center',
                                             gap: 8
                                         }}
-                                        onMouseEnter={e => activeCanalId !== canal.id && (e.currentTarget.style.background = 'var(--bg-secondary)')}
-                                        onMouseLeave={e => activeCanalId !== canal.id && (e.currentTarget.style.background = 'transparent')}
+                                        onMouseEnter={e => !activeCanalId === canal.id && (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                                        onMouseLeave={e => !activeCanalId === canal.id && (e.currentTarget.style.background = 'transparent')}
                                     >
                                         <FolderKanban size={14} />
                                         <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -981,34 +904,6 @@ export default function ChatPage() {
                                 )}
                             </div>
                         </div>
-
-                        {/* PINNED BANNER */}
-                        {pinnedMensagens && pinnedMensagens.length > 0 && (
-                            <div className="pinned-banner" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-default)', fontSize: 13, flexShrink: 0 }}>
-                                <Pin size={16} style={{ fill: 'currentColor', color: 'var(--accent)' }} />
-                                <span className="pinned-text" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>
-                                    <strong style={{ color: 'var(--accent-light)' }}>{pinnedMensagens[0].autor?.nome}</strong>: {pinnedMensagens[0].conteudo?.substring(0, 100)}
-                                </span>
-                                <button onClick={() => {
-                                    const element = document.getElementById(`msg-${pinnedMensagens[0].id}`);
-                                    if (element) {
-                                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                        element.animate([
-                                            { backgroundColor: 'rgba(var(--accent-rgb), 0.3)' },
-                                            { backgroundColor: 'transparent' }
-                                        ], { duration: 2000 });
-                                    }
-                                }} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>Ver</button>
-                                {(activeCanal?.criador_id === userId || user?.categoria === 'Admin Geral') && (
-                                    <button onClick={async () => {
-                                        await pinMensagem(pinnedMensagens[0].id, false);
-                                        setPinnedMensagens([]);
-                                    }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
-                                        <X size={16} />
-                                    </button>
-                                )}
-                            </div>
-                        )}
 
                         <div className="chat-messages" role="log" aria-live="polite" aria-label="Mensagens do canal">
                             {isLoading ? (
@@ -1119,195 +1014,6 @@ export default function ChatPage() {
                     </div>
                 )}
             </main>
-        </div>
-    );
-}
-
-const MembersModal = ({ activeCanalId, activeCanal, allUsuarios, participantes, userId, user, onClose, refetchParticipantes, addParticipante, removeParticipante }: any) => {
-    const isCreatorOrAdmin = activeCanal?.criador_id === userId || user?.categoria === 'Admin Geral';
-    const [selectedMembers, setSelectedMembers] = useState<string[]>(participantes.map((p:any) => p.usuario_id));
-    const [saving, setSaving] = useState(false);
-
-    const handleToggleMember = (uid: string, checked: boolean) => {
-        if (checked) setSelectedMembers([...selectedMembers, uid]);
-        else setSelectedMembers(selectedMembers.filter(id => id !== uid));
-    };
-
-    const saveMembersChanges = async () => {
-        if (!isCreatorOrAdmin || !activeCanalId) return;
-        setSaving(true);
-        try {
-            const currentIds = participantes.map((p:any) => p.usuario_id);
-            const toAdd = selectedMembers.filter(id => !currentIds.includes(id));
-            const toRemove = currentIds.filter((id:string) => !selectedMembers.includes(id));
-            
-            for (const id of toAdd) {
-                await addParticipante(activeCanalId, id);
-            }
-            for (const id of toRemove) {
-                if (id !== activeCanal.criador_id) {
-                    await removeParticipante(activeCanalId, id);
-                }
-            }
-            await refetchParticipantes();
-            onClose();
-        } catch(e:any) {
-            alert('Erro ao atualizar membros: ' + e.message);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={onClose}>
-            <div style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, maxWidth: 450, width: '90%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
-                <h2 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, fontWeight: 600 }}>Gerenciar Membros</h2>
-                <div style={{ flex: 1, overflowY: 'auto', paddingRight: 8 }}>
-                    <div style={{ marginBottom: 20 }}>
-                        <h3 style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10, textTransform: 'uppercase' }}>Membros Atuais ({participantes.length})</h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {participantes.map((p:any) => (
-                                <label key={p.usuario_id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: isCreatorOrAdmin ? 'pointer' : 'default' }}>
-                                    <input type="checkbox" checked={selectedMembers.includes(p.usuario_id)} disabled={!isCreatorOrAdmin || p.usuario_id === activeCanal.criador_id} onChange={e => handleToggleMember(p.usuario_id, e.target.checked)} />
-                                    <span style={{ fontSize: 14, flex: 1, color: 'var(--text-primary)' }}>{p.usuario?.nome}</span>
-                                    {p.usuario_id === activeCanal.criador_id && (
-                                        <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--accent-muted)', color: 'var(--accent)', borderRadius: 10, fontWeight: 600 }}>Criador</span>
-                                    )}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                    <div>
-                        <h3 style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10, textTransform: 'uppercase' }}>Adicionar Usuários</h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {allUsuarios?.filter((u:any) => !participantes.some((p:any) => p.usuario_id === u.id)).map((u:any) => (
-                                <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: isCreatorOrAdmin ? 'pointer' : 'default' }}>
-                                    <input type="checkbox" checked={selectedMembers.includes(u.id)} disabled={!isCreatorOrAdmin} onChange={e => handleToggleMember(u.id, e.target.checked)} />
-                                    <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>{u.nome}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-default)' }}>
-                    <button onClick={onClose} style={{ padding: '8px 16px', border: '1px solid var(--border-default)', borderRadius: 6, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>{isCreatorOrAdmin ? 'Cancelar' : 'Fechar'}</button>
-                    {isCreatorOrAdmin && (
-                        <button onClick={saveMembersChanges} disabled={saving} style={{ padding: '8px 16px', background: 'var(--accent)', color: '#000', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>{saving ? 'Transferindo...' : 'Confirmar'}</button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const SettingsModal = ({ activeCanalId, activeCanal, userId, user, onClose, refetchCanais, setModal, updateCanal }: any) => {
-    const isCreatorOrAdmin = activeCanal?.criador_id === userId || user?.categoria === 'Admin Geral';
-    const [nome, setNome] = useState(activeCanal?.nome || '');
-    const [descricao, setDescricao] = useState(activeCanal?.descricao || '');
-    const [tipo, setTipo] = useState<'canal' | 'grupo_projeto'>(activeCanal?.tipo || 'canal');
-    const [arquivado, setArquivado] = useState(activeCanal?.arquivado || false);
-    const [saving, setSaving] = useState(false);
-
-    const saveSettings = async () => {
-        if (!isCreatorOrAdmin || !activeCanalId || !nome.trim()) return;
-        setSaving(true);
-        try {
-            await updateCanal(activeCanalId, { nome, descricao, tipo, arquivado });
-            await refetchCanais();
-            onClose();
-        } catch(e:any) {
-            alert('Erro ao atualizar canal: ' + e.message);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={onClose}>
-            <div style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, maxWidth: 450, width: '90%', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
-                <h2 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, fontWeight: 600 }}>Configurações do Canal</h2>
-                
-                {!isCreatorOrAdmin && (
-                    <div style={{ background: 'var(--info-muted)', color: 'var(--info)', padding: '10px 12px', borderRadius: 6, fontSize: 13, marginBottom: 16 }}>
-                        Apenas criador/admin podem editar configurações
-                    </div>
-                )}
-
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)' }}>Nome do Canal</label>
-                    <input type="text" value={nome} onChange={e => setNome(e.target.value)} disabled={!isCreatorOrAdmin} maxLength={50} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border-default)', borderRadius: 6, fontSize: 13, background: 'var(--bg-secondary)', color: 'var(--text-primary)', boxSizing: 'border-box' }} />
-                </div>
-                
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)' }}>Descrição</label>
-                    <textarea value={descricao} onChange={e => setDescricao(e.target.value)} disabled={!isCreatorOrAdmin} rows={3} maxLength={200} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border-default)', borderRadius: 6, fontSize: 13, background: 'var(--bg-secondary)', color: 'var(--text-primary)', resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)' }}>Tipo de Canal</label>
-                    <select value={tipo} onChange={e => setTipo(e.target.value as any)} disabled={!isCreatorOrAdmin} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border-default)', borderRadius: 6, fontSize: 13, background: 'var(--bg-secondary)', color: 'var(--text-primary)', boxSizing: 'border-box' }}>
-                        <option value="canal">Canal</option>
-                        <option value="grupo_projeto">Grupo/Projeto</option>
-                    </select>
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: isCreatorOrAdmin ? 'pointer' : 'default' }}>
-                        <input type="checkbox" checked={arquivado} onChange={e => setArquivado(e.target.checked)} disabled={!isCreatorOrAdmin} />
-                        Arquivar canal (deixa visível mas sem mensagens novas)
-                    </label>
-                </div>
-
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 12, paddingTop: 16, borderTop: '1px solid var(--border-default)' }}>
-                    {isCreatorOrAdmin && (
-                        <button onClick={() => { onClose(); setModal('deleteConfirm'); }} style={{ padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--danger-muted)', color: 'var(--danger)', cursor: 'pointer', fontSize: 13, fontWeight: 600, marginRight: 'auto' }}>Deletar Canal</button>
-                    )}
-                    <button onClick={onClose} style={{ padding: '8px 16px', border: '1px solid var(--border-default)', borderRadius: 6, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>{isCreatorOrAdmin ? 'Cancelar' : 'Fechar'}</button>
-                    {isCreatorOrAdmin && (
-                        <button onClick={saveSettings} disabled={saving || !nome.trim()} style={{ padding: '8px 16px', background: 'var(--accent)', color: '#000', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>{saving ? 'Salvando...' : 'Salvar'}</button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const DeleteConfirmModal = ({ activeCanalId, activeCanal, userId, user, onClose, refetchCanais, deleteCanal, setChatMode }: any) => {
-    const isCreatorOrAdmin = activeCanal?.criador_id === userId || user?.categoria === 'Admin Geral';
-    const [deleting, setDeleting] = useState(false);
-
-    if (!isCreatorOrAdmin) return null;
-
-    const handleDeleteChannel = async () => {
-        if (!activeCanalId) return;
-        setDeleting(true);
-        try {
-            await deleteCanal(activeCanalId);
-            setChatMode('dms');
-            await refetchCanais();
-            onClose();
-        } catch(e:any) {
-            alert('Erro ao deletar canal: ' + e.message);
-        } finally {
-            setDeleting(false);
-        }
-    };
-
-    return (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={onClose}>
-            <div style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', border: '1px solid var(--danger-muted)' }} onClick={e => e.stopPropagation()}>
-                <h2 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, fontWeight: 600, color: 'var(--danger)' }}>⚠️ Deletar Canal</h2>
-                <p style={{ fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.5, marginBottom: 10 }}>
-                    Tem certeza que deseja deletar o canal <strong>{activeCanal?.nome}</strong>?
-                </p>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 20 }}>
-                    Todas as mensagens e dados serão permanentemente removidos. Esta ação não pode ser desfeita.
-                </p>
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                    <button onClick={onClose} style={{ padding: '8px 16px', border: '1px solid var(--border-default)', borderRadius: 6, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Cancelar</button>
-                    <button onClick={handleDeleteChannel} disabled={deleting} style={{ padding: '8px 16px', background: 'var(--danger)', color: '#fff', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>{deleting ? 'Deletando...' : 'Sim, Deletar'}</button>
-                </div>
-            </div>
         </div>
     );
 }
