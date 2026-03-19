@@ -2,12 +2,12 @@
 
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
-import { useOperationalTasks, useComercialTasks, useAdminDemands } from '@/lib/hooks';
+import { useOperationalTasks, useComercialTasks } from '@/lib/hooks';
 import {
     Loader2, Calendar as CalendarIcon, AlertCircle, Circle, PlayCircle, Eye, CheckCircle2,
     KanbanSquare, List, ArrowRight
 } from 'lucide-react';
-import type { OperationalTask, ComercialTask, AdminDemand } from '@/lib/types';
+import type { OperationalTask, ComercialTask } from '@/lib/types';
 import Link from 'next/link';
 
 type UnifiedTask = {
@@ -16,7 +16,7 @@ type UnifiedTask = {
     descricao?: string;
     status: 'backlog' | 'progress' | 'review' | 'done';
     prioridade?: 'Alta' | 'Média' | 'Baixa';
-    modulo: 'Operacional' | 'Comercial' | 'Administrativo';
+    modulo: 'Operacional' | 'Comercial';
     data_vencimento?: string;
     responsaveis_ids?: string[];
     participantes_ids?: string[];
@@ -33,7 +33,6 @@ const KANBAN_COLUMNS = [
 const MODULE_COLORS: Record<string, { bg: string; text: string }> = {
     'Operacional': { bg: 'rgba(56, 189, 248, 0.12)', text: '#38bdf8' },
     'Comercial': { bg: 'rgba(250, 204, 21, 0.12)', text: '#facc15' },
-    'Administrativo': { bg: 'rgba(167, 139, 250, 0.12)', text: '#a78bfa' }
 };
 
 function mapOperationalStatus(s: string): UnifiedTask['status'] {
@@ -50,12 +49,6 @@ function mapComercialStatus(s: string): UnifiedTask['status'] {
     return 'backlog';
 }
 
-function mapAdminStatus(s: string): UnifiedTask['status'] {
-    if (s === 'Fazendo') return 'progress';
-    if (s === 'Finalizado') return 'done';
-    return 'backlog';
-}
-
 function getDeadlineColor(dateString?: string) {
     if (!dateString) return null;
     const diffDays = Math.ceil((new Date(dateString).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
@@ -68,12 +61,10 @@ export default function MinhasTarefasPage() {
     const { user } = useAuth();
     const { data: opTasks, loading: loadingOp } = useOperationalTasks();
     const { data: comTasks, loading: loadingCom } = useComercialTasks();
-    const { data: admTasks, loading: loadingAdm } = useAdminDemands();
-
     const [filterModule, setFilterModule] = useState<string>('all');
     const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
 
-    const loading = loadingOp || loadingCom || loadingAdm;
+    const loading = loadingOp || loadingCom;
 
     const unifiedTasks = useMemo(() => {
         if (!user) return [];
@@ -109,22 +100,8 @@ export default function MinhasTarefasPage() {
             }
         });
 
-        admTasks.forEach(t => {
-            const isResp = t.responsavel_id === user.id || t.responsaveis_ids?.includes(user.id);
-            if (isResp) {
-                tasks.push({
-                    id: t.id, titulo: t.titulo, descricao: t.descricao,
-                    status: mapAdminStatus(t.status), prioridade: t.prioridade,
-                    modulo: 'Administrativo', data_vencimento: t.data_prevista || t.data_conclusao,
-                    responsaveis_ids: t.responsaveis_ids || (t.responsavel_id ? [t.responsavel_id] : []),
-                    participantes_ids: [],
-                    originalUrl: '/administrativo'
-                });
-            }
-        });
-
         return tasks;
-    }, [user, opTasks, comTasks, admTasks]);
+    }, [user, opTasks, comTasks]);
 
     const filteredTasks = useMemo(() => {
         if (filterModule === 'all') return unifiedTasks;
@@ -152,9 +129,6 @@ export default function MinhasTarefasPage() {
                     </button>
                     <button className={`finance-tab ${filterModule === 'Comercial' ? 'active' : ''}`} onClick={() => setFilterModule('Comercial')}>
                         Comercial
-                    </button>
-                    <button className={`finance-tab ${filterModule === 'Administrativo' ? 'active' : ''}`} onClick={() => setFilterModule('Administrativo')}>
-                        Administrativo
                     </button>
                 </div>
                 <div style={{ display: 'flex', gap: 4, background: 'var(--bg-secondary)', borderRadius: 8, padding: 4 }}>

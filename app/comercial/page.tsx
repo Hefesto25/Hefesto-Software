@@ -1,9 +1,11 @@
+
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import {
     TrendingUp, TrendingDown, Target, FileText, Handshake, Filter, Users, DollarSign,
-    FileDown, Activity, Sparkles, PieChart, BarChart3, Presentation, Ban, Plus, CalendarDays, ChevronDown, AlertTriangle, Trash2
+    FileDown, Activity, Sparkles, PieChart, BarChart3, Ban, Plus, CalendarDays, ChevronDown, AlertTriangle, Trash2,
+    ArrowDown, Award
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -15,7 +17,9 @@ import {
     useCalendarEvents, addCalendarEvent, updateCalendarEvent, removeCalendarEvent,
     useUsuarios, updateUsuario, useSellerGoals, addSellerGoal, removeSellerGoal, useComercialCommissionTiers,
     useComercialTasks, addComercialTask, updateComercialTask, removeComercialTask,
-    sendAssigneeNotificationsAndCalendar
+    sendAssigneeNotificationsAndCalendar,
+    updateLeadLossRecord,
+    checkLostLeadReturnNotifications
 } from '@/lib/hooks';
 import {
     DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, DragStartEvent, DragEndEvent
@@ -27,6 +31,8 @@ import {
     Cell, PieChart as RechartsPie, Pie, Legend, LineChart, Line, ReferenceLine
 } from 'recharts';
 import type { Deal, SellerGoal, ClientCRM, MeetingCRM, FeedbackCRM, ComercialTask } from '@/lib/types';
+import LossLeadModal from './LossLeadModal';
+import LeadsLostTab from './LeadsLostTab';
 
 const MONTHS = [
     { value: '01', label: 'Janeiro' },
@@ -63,7 +69,7 @@ export function getDaysInStage(dateStr?: string) {
 
 export default function ComercialPage() {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'painel' | 'negocios' | 'time' | 'crm' | 'comissao' | 'tarefas'>('painel');
+    const [activeTab, setActiveTab] = useState<'painel' | 'negocios' | 'funil' | 'time' | 'crm' | 'comissao' | 'tarefas' | 'perdidos'>('painel');
     const [subTabNegocios, setSubTabNegocios] = useState<'kanban' | 'lista' | 'historico'>('kanban');
 
     const currentDate = getBahiaDate();
@@ -112,11 +118,18 @@ export default function ComercialPage() {
         [teamMembers]
     );
 
+    // Check lost lead return notifications once on load
+    useEffect(() => {
+        if (filteredComUsuarios.length > 0) {
+            checkLostLeadReturnNotifications(filteredComUsuarios.map((u: any) => u.id));
+        }
+    }, [filteredComUsuarios]);
+
     const [showClientModal, setShowClientModal] = useState(false);
     const [newClientData, setNewClientData] = useState<Partial<ClientCRM>>({ status: 'Ativo' });
     const [leadFormError, setLeadFormError] = useState('');
     const [selectedClient, setSelectedClient] = useState<ClientCRM | null>(null);
-    const [clientTab, setClientTab] = useState<'info' | 'rentabilidade' | 'reunioes' | 'feedbacks'>('info');
+    const [clientTab, setClientTab] = useState<'info' | 'rentabilidade' | 'feedbacks'>('info');
     const [crmSubTab, setCrmSubTab] = useState<'ativos' | 'inativos'>('ativos');
     const [editingClientData, setEditingClientData] = useState<ClientCRM | null>(null);
 
@@ -159,6 +172,7 @@ export default function ComercialPage() {
     const [anualValue, setAnualValue] = useState<string>('');
     const [showLostModal, setShowLostModal] = useState<{ isOpen: boolean, dealId: string | null }>({ isOpen: false, dealId: null });
     const [lostReason, setLostReason] = useState('');
+    const [lossModalDeal, setLossModalDeal] = useState<Deal | null>(null);
     const [showWonModal, setShowWonModal] = useState<{ isOpen: boolean, dealId: string | null }>({ isOpen: false, dealId: null });
     const [wonParticipantes, setWonParticipantes] = useState<string[]>([]);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -167,19 +181,24 @@ export default function ComercialPage() {
     const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
     const [editingDealData, setEditingDealData] = useState<Partial<Deal> | null>(null);
 
-    // Auto-open deal if task_id is in URL (from Chat Mention)
+    // Auto-open deal or tab from URL params
     useEffect(() => {
         if (!loadingDeals && deals.length > 0) {
             const params = new URLSearchParams(window.location.search);
             const taskId = params.get('task_id');
+            const tab = params.get('tab');
             if (taskId) {
                 const deal = deals.find(d => d.id === taskId);
                 if (deal) {
                     setSelectedDeal(deal);
                     setActiveTab('negocios');
-                    // Clear the URL to prevent re-opening on manual refresh
-                    window.history.replaceState({}, '', '/comercial');
                 }
+            } else if (tab === 'perdidos') {
+                setActiveTab('perdidos');
+            }
+            // Clear the URL to prevent re-opening on manual refresh
+            if (taskId || tab) {
+                window.history.replaceState({}, '', '/comercial');
             }
         }
     }, [loadingDeals, deals]);
@@ -422,24 +441,36 @@ export default function ComercialPage() {
                 date: newMeeting.date,
                 status: 'Agendada',
                 observations: newMeeting.observations,
+                responsible_id: user?.id,
             });
-            if (meeting) {
-                try {
-                    await addCalendarEvent({
-                        titulo: `${selectedClient.name} — ${newMeeting.title}`,
-                        data: newMeeting.date.split('T')[0],
-                        hora_inicio: newMeeting.date.split('T')[1]?.substring(0, 5) || '10:00',
-                        descricao: newMeeting.observations || '',
-                        cor: '#F97316',
-                        origem: 'crm_reuniao',
-                        reuniao_id: meeting.id
-                    });
-                    if (refetchCalendarEvents) await refetchCalendarEvents();
-                } catch (e) { console.error('Erro ao sync calendário', e); }
+            // Add to calendar
+            const comercialUserIds = filteredComUsuarios.map((u: any) => u.id);
+            const participantIds = user?.id && !comercialUserIds.includes(user.id)
+                ? [...comercialUserIds, user.id]
+                : comercialUserIds;
+            try {
+                await addCalendarEvent({
+                    titulo: `${selectedClient.name} — ${newMeeting.title}`,
+                    data: newMeeting.date.split('T')[0],
+                    hora_inicio: newMeeting.date.split('T')[1]?.substring(0, 5) || '10:00',
+                    descricao: newMeeting.observations || '',
+                    cor: '#F97316',
+                    origem: 'crm_reuniao',
+                    reuniao_id: meeting.id,
+                    owner_id: user?.id,
+                    participantes_ids: participantIds,
+                });
+                if (refetchCalendarEvents) await refetchCalendarEvents();
+            } catch (calErr) {
+                console.error('Erro ao adicionar ao calendário:', calErr);
+                showToast('Reunião agendada, mas falhou ao adicionar ao calendário.');
+                if (refetchMeetings) await refetchMeetings();
+                setNewMeeting({});
+                return;
             }
             if (refetchMeetings) await refetchMeetings();
             setNewMeeting({});
-            showToast('Reunião agendada.');
+            showToast('Reunião agendada e adicionada ao calendário.');
         } catch (e) {
             console.error(e);
             showToast('Erro ao agendar reunião.');
@@ -711,11 +742,48 @@ export default function ComercialPage() {
         return data;
     }, [deals, goals]);
 
-    // Gráfico 3: Funil de Conversão (Quantidade por Etapa Ativa)
-    const funnelData = STAGES.filter(s => s.id !== 'perdido').map(stage => {
+    // Gráfico 3: Funil de Conversão com Taxa de Conversão entre Etapas
+    const funnelStages = STAGES.filter(s => s.id !== 'perdido');
+    const funnelData = funnelStages.map((stage, idx) => {
         const count = filteredDeals.filter(d => d.stage === stage.id).length;
-        return { name: stage.label, count, fill: stage.color };
+        const prevCount = idx > 0 ? filteredDeals.filter(d => d.stage === funnelStages[idx - 1].id).length : 0;
+        const conversionRate = idx > 0 && prevCount > 0 ? Math.round((count / prevCount) * 100) : null;
+        return { name: stage.label, count, fill: stage.color, conversionRate };
     });
+
+    // Feedback summary per client for CRM table: counts per type (by client ID)
+    const feedbackSummaryByClientId = useMemo(() => {
+        const map: Record<string, { elogios: number; reclamacoes: number; sugestoes: number }> = {};
+        clients.forEach(client => {
+            const clientFeedbacks = feedbacks.filter(f => f.client_id === client.id && f.type);
+            if (clientFeedbacks.length > 0) {
+                map[client.id] = {
+                    elogios: clientFeedbacks.filter(f => f.type === 'Elogio').length,
+                    reclamacoes: clientFeedbacks.filter(f => f.type === 'Reclamação').length,
+                    sugestoes: clientFeedbacks.filter(f => f.type === 'Sugestão').length,
+                };
+            }
+        });
+        return map;
+    }, [clients, feedbacks]);
+
+    // Feedback indicator for Kanban cards: highest-priority type per company name
+    const feedbackByClientName = useMemo(() => {
+        const map: Record<string, { type: string; color: string }> = {};
+        clients.forEach(client => {
+            const clientFeedbacks = feedbacks.filter(f => f.client_id === client.id && f.type);
+            if (clientFeedbacks.length > 0) {
+                if (clientFeedbacks.some(f => f.type === 'Reclamação')) {
+                    map[client.name] = { type: 'Reclamação', color: '#EF4444' };
+                } else if (clientFeedbacks.some(f => f.type === 'Sugestão')) {
+                    map[client.name] = { type: 'Sugestão', color: '#F59E0B' };
+                } else {
+                    map[client.name] = { type: 'Elogio', color: '#10B981' };
+                }
+            }
+        });
+        return map;
+    }, [clients, feedbacks]);
 
     if (loadingDeals || loadingMembers || loadingGoals) {
         return (
@@ -749,6 +817,12 @@ export default function ComercialPage() {
                     Negócios
                 </button>
                 <button
+                    className={`finance-tab ${activeTab === 'funil' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('funil')}
+                >
+                    Funil
+                </button>
+                <button
                     className={`finance-tab ${activeTab === 'time' ? 'active' : ''}`}
                     onClick={() => setActiveTab('time')}
                 >
@@ -771,6 +845,12 @@ export default function ComercialPage() {
                     onClick={() => setActiveTab('tarefas')}
                 >
                     Tarefas
+                </button>
+                <button
+                    className={`finance-tab ${activeTab === 'perdidos' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('perdidos')}
+                >
+                    Leads Perdidos{deals.filter(d => d.stage === 'perdido').length > 0 && ` (${deals.filter(d => d.stage === 'perdido').length})`}
                 </button>
             </div>
 
@@ -895,28 +975,211 @@ export default function ComercialPage() {
                         </div>
                     </div>
 
-                    <div className="chart-card">
-                        <div className="chart-title">Pipeline Atual (Por Etapa)</div>
-                        <div style={{ width: '100%', height: 200 }}>
-                            <ResponsiveContainer>
-                                <BarChart data={funnelData} layout="vertical" margin={{ top: 10, right: 30, left: 40, bottom: 5 }}>
-                                    <XAxis type="number" hide />
-                                    <YAxis dataKey="name" type="category" stroke="var(--text-primary)" fontSize={13} tickLine={false} axisLine={false} />
-                                    <Tooltip
-                                        cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                                        contentStyle={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: 8 }}
-                                    />
-                                    <Bar dataKey="count" name="Oportunidades" radius={[0, 4, 4, 0]} barSize={30}>
-                                        {funnelData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
                 </>
             )}
+
+            {/* TAB FUNIL */}
+            {activeTab === 'funil' && (() => {
+                const totalAtivos = funnelData.reduce((s, d) => s + d.count, 0);
+                const totalPerdidos = filteredDeals.filter(d => d.stage === 'perdido').length;
+                const totalFechados = filteredDeals.filter(d => d.stage === 'fechado').length;
+                const taxaGeral = (totalAtivos + totalFechados) > 0
+                    ? Math.round((totalFechados / (totalAtivos + totalFechados + totalPerdidos)) * 100)
+                    : 0;
+                const valorPipeline = abertos.reduce((s, d) => s + d.value, 0);
+                const maxCount = Math.max(...funnelData.map(s => s.count), 1);
+
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+                        {/* Filter header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', alignSelf: 'flex-start' }}>
+                            <Filter size={14} style={{ color: 'var(--text-muted)' }} />
+                            <select className="form-select" style={{ minWidth: 120, fontSize: 13, background: 'transparent', border: 'none' }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
+                                {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </select>
+                            <select className="form-select" style={{ minWidth: 90, fontSize: 13, background: 'transparent', border: 'none' }} value={filterYear} onChange={e => setFilterYear(e.target.value)}>
+                                {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                        </div>
+
+                        {/* KPI summary row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                            {[
+                                { label: 'Leads Ativos', value: String(totalAtivos), color: '#3B82F6', icon: <Activity size={18} /> },
+                                { label: 'Fechados', value: String(totalFechados), color: '#10B981', icon: <Handshake size={18} /> },
+                                { label: 'Perdidos', value: String(totalPerdidos), color: '#EF4444', icon: <Ban size={18} /> },
+                                { label: 'Valor no Pipeline', value: formatCurrency(valorPipeline), color: '#8B5CF6', icon: <DollarSign size={18} /> },
+                            ].map(kpi => (
+                                <div key={kpi.label} className="kpi-card" style={{ borderBottom: `3px solid ${kpi.color}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div className="kpi-card-value" style={{ color: kpi.color, fontSize: 22 }}>{kpi.value}</div>
+                                        <span style={{ color: kpi.color, opacity: 0.5 }}>{kpi.icon}</span>
+                                    </div>
+                                    <div className="kpi-card-label">{kpi.label}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Main funnel */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20 }}>
+
+                            {/* Funnel visualization */}
+                            <div className="chart-card" style={{ padding: '24px 32px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                                    <div>
+                                        <div className="chart-title" style={{ marginBottom: 4 }}>Funil de Conversão</div>
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                            {MONTHS.find(m => m.value === filterMonth)?.label} {filterYear}
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: 24, fontWeight: 700, color: '#10B981' }}>{taxaGeral}%</div>
+                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>conversão geral</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    {funnelData.map((stage, idx) => {
+                                        const widthPct = Math.max((stage.count / maxCount) * 100, 6);
+                                        const isBottleneck = stage.conversionRate !== null && stage.conversionRate < 30;
+                                        return (
+                                            <div key={stage.name}>
+                                                {/* Conversion rate connector */}
+                                                {idx > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '6px 0' }}>
+                                                        <ArrowDown size={14} style={{ color: stage.conversionRate !== null && stage.conversionRate < 30 ? '#EF4444' : stage.conversionRate !== null && stage.conversionRate < 60 ? '#F59E0B' : '#6B7280' }} />
+                                                        {stage.conversionRate !== null ? (
+                                                            <span style={{
+                                                                fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
+                                                                color: isBottleneck ? '#EF4444' : stage.conversionRate < 60 ? '#F59E0B' : '#10B981',
+                                                                background: isBottleneck ? 'rgba(239,68,68,0.1)' : stage.conversionRate < 60 ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
+                                                                padding: '2px 8px', borderRadius: 20,
+                                                            }}>
+                                                                {stage.conversionRate}% conversão
+                                                                {isBottleneck ? ' ⚠' : ''}
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                )}
+                                                {/* Stage bar */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                                    <div style={{ width: 88, textAlign: 'right', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flexShrink: 0, letterSpacing: '0.01em' }}>
+                                                        {stage.name}
+                                                    </div>
+                                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                        <div style={{
+                                                            width: `${widthPct}%`, height: 36,
+                                                            background: `linear-gradient(90deg, ${stage.fill}CC, ${stage.fill})`,
+                                                            borderRadius: '0 8px 8px 0',
+                                                            display: 'flex', alignItems: 'center', paddingLeft: 12,
+                                                            transition: 'width 0.4s ease',
+                                                            boxShadow: `0 0 12px ${stage.fill}33`,
+                                                            minWidth: 44,
+                                                        }}>
+                                                            <span style={{ fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>
+                                                                {stage.count}
+                                                            </span>
+                                                        </div>
+                                                        {stage.count > 0 && (
+                                                            <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
+                                                                {Math.round((stage.count / (totalAtivos + totalFechados || 1)) * 100)}%
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Lost deals footer */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#EF4444', flexShrink: 0, display: 'inline-block' }} />
+                                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                        Leads saídos como Perdidos este período:
+                                    </span>
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: '#EF4444' }}>
+                                        {totalPerdidos}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Stage breakdown table */}
+                            <div className="chart-card" style={{ padding: '24px 20px' }}>
+                                <div className="chart-title" style={{ marginBottom: 20 }}>Por Etapa</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    {[...funnelData,
+                                        { name: 'Perdido', count: totalPerdidos, fill: '#EF4444', conversionRate: null }
+                                    ].map(stage => (
+                                        <div key={stage.name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.fill, flexShrink: 0, display: 'inline-block' }} />
+                                            <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{stage.name}</span>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontSize: 16, fontWeight: 700, color: stage.fill }}>{stage.count}</div>
+                                                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>leads</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div style={{ marginTop: 8, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>Total no período</span>
+                                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                            {totalAtivos + totalFechados + totalPerdidos}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Per-seller breakdown */}
+                        {teamStats.length > 0 && (
+                            <div className="table-card">
+                                <div className="table-card-title">Conversão por Vendedor</div>
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table className="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Vendedor</th>
+                                                <th>Leads</th>
+                                                <th>Fechados</th>
+                                                <th>Taxa Conversão</th>
+                                                <th>Receita</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {teamStats.map(s => (
+                                                <tr key={s.name}>
+                                                    <td>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#000', flexShrink: 0 }}>
+                                                                {s.name.charAt(0)}
+                                                            </div>
+                                                            <span style={{ fontWeight: 500 }}>{s.name}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ color: 'var(--text-muted)' }}>{s.leads}</td>
+                                                    <td style={{ color: '#10B981', fontWeight: 600 }}>{s.wins}</td>
+                                                    <td>
+                                                        <span style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                            padding: '2px 8px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                                                            background: s.convRate >= 50 ? 'rgba(16,185,129,0.12)' : s.convRate >= 20 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
+                                                            color: s.convRate >= 50 ? '#10B981' : s.convRate >= 20 ? '#F59E0B' : '#EF4444',
+                                                        }}>
+                                                            {s.convRate.toFixed(1)}%
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ fontWeight: 600 }}>{formatCurrency(s.value)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* TAB NEGOCIOS */}
             {activeTab === 'negocios' && (() => {
@@ -960,9 +1223,10 @@ export default function ComercialPage() {
 
                     try {
                         if (stageId === 'perdido') {
-                            setShowLostModal({ isOpen: true, dealId });
-                            setDealsData(deals); // Revert for modal to complete the backend update
-                            return; // Wait for modal to complete the backend update
+                            const dealObj = deals.find(d => d.id === dealId) || null;
+                            setLossModalDeal(dealObj);
+                            setDealsData(deals); // Revert — modal will complete the backend update
+                            return;
                         }
 
                         if (stageId === 'fechado' && oldStage !== 'fechado') {
@@ -1056,11 +1320,11 @@ export default function ComercialPage() {
                                         const colDeals = isHistoricStage ? [] : activeList.filter(d => d.stage === stage.id);
                                         const colTotal = isHistoricStage ? 0 : colDeals.reduce((sum, d) => sum + d.value, 0);
 
-                                        return <KanbanColumn key={stage.id} stage={stage} colDeals={colDeals} colTotal={colTotal} onCardClick={(d) => setSelectedDeal(d)} />;
+                                        return <KanbanColumn key={stage.id} stage={stage} colDeals={colDeals} colTotal={colTotal} onCardClick={(d) => setSelectedDeal(d)} feedbackMap={feedbackByClientName} />;
                                     })}
                                 </div>
                                 <DragOverlay>
-                                    {draggedDeal ? <KanbanCard deal={draggedDeal} isOverlay={true} /> : null}
+                                    {draggedDeal ? <KanbanCard deal={draggedDeal} isOverlay={true} feedbackInfo={feedbackByClientName[draggedDeal.company]} /> : null}
                                 </DragOverlay>
                             </DndContext>
                         )}
@@ -1162,54 +1426,22 @@ export default function ComercialPage() {
                             </div>
                         )}
 
-                        {/* Fake Modal Lost (simplified for demo logic) */}
-                        {showLostModal.isOpen && (
-                            <div className="modal-overlay">
-                                <div className="modal-content" style={{ maxWidth: 400 }}>
-                                    <h3>Motivo da Perda</h3>
-                                    <div className="form-group" style={{ marginTop: 16 }}>
-                                        <label>Selecione o motivo de encerramento do negócio:</label>
-                                        <select className="form-select" value={lostReason} onChange={e => setLostReason(e.target.value)}>
-                                            <option value="">Selecione...</option>
-                                            <option value="Preço">Preço</option>
-                                            <option value="Concorrente">Concorrente</option>
-                                            <option value="Sem retorno">Sem retorno</option>
-                                            <option value="Timing">Timing</option>
-                                            <option value="Outro">Outro</option>
-                                        </select>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-                                        <button className="btn btn-secondary" onClick={() => {
-                                            // revert
-                                            const d = deals.find(x => x.id === showLostModal.dealId);
-                                            if (d) setDealsData(deals.map(x => x.id === showLostModal.dealId ? { ...x, stage: d.stage } : x));
-                                            setShowLostModal({ isOpen: false, dealId: null });
-                                        }}>Cancelar</button>
-                                        <button className="btn btn-primary" onClick={async () => {
-                                            if (!lostReason) return showToast('Selecione um motivo');
-                                            try {
-                                                const updatedAt = new Date().toISOString();
-                                                await updateDeal(showLostModal.dealId as string, {
-                                                    stage: 'perdido',
-                                                    motivo_perda: lostReason,
-                                                    data_entrada_etapa: updatedAt
-                                                });
-
-                                                // Update local state
-                                                setDealsData(deals.map(d => d.id === showLostModal.dealId ? { ...d, stage: 'perdido', motivo_perda: lostReason, data_entrada_etapa: updatedAt } : d));
-
-                                                setShowLostModal({ isOpen: false, dealId: null });
-                                                setLostReason('');
-                                                showToast('Negócio marcado como Perdido.');
-                                            } catch (e) {
-                                                console.error(e);
-                                                showToast('Erro ao atualizar.');
-                                            }
-                                        }}>Confirmar Perda</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        {/* LossLeadModal – replaces the old inline lost modal */}
+                        <LossLeadModal
+                            deal={lossModalDeal}
+                            isOpen={lossModalDeal !== null}
+                            onClose={() => setLossModalDeal(null)}
+                            onSuccess={() => {
+                                // Refresh deals list to reflect the new stage
+                                setDealsData(deals.map(d =>
+                                    d.id === lossModalDeal?.id
+                                        ? { ...d, stage: 'perdido', data_entrada_etapa: new Date().toISOString() }
+                                        : d
+                                ));
+                                setLossModalDeal(null);
+                                showToast('Negócio marcado como Perdido.');
+                            }}
+                        />
 
                         {/* Modal Ganho (Fechado) - Seleção de Participantes */}
                         {showWonModal.isOpen && (
@@ -1849,6 +2081,7 @@ export default function ComercialPage() {
                                                 <th>E-mail</th>
                                                 <th>Telefone</th>
                                                 <th>Mensalidade</th>
+                                                <th>Feedback</th>
                                                 <th>Status</th>
                                             </tr>
                                         </thead>
@@ -1873,6 +2106,31 @@ export default function ComercialPage() {
                                                     <td>{c.contact_email || '-'}</td>
                                                     <td>{c.contact_phone || '-'}</td>
                                                     <td>{formatCurrency(c.monthly_fee || 0)}</td>
+                                                    <td>
+                                                        {(() => {
+                                                            const summary = feedbackSummaryByClientId[c.id];
+                                                            if (!summary) return <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>-</span>;
+                                                            return (
+                                                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                                    {summary.elogios > 0 && (
+                                                                        <span style={{ background: '#10B98120', color: '#10B981', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
+                                                                            {summary.elogios} Elogio{summary.elogios > 1 ? 's' : ''}
+                                                                        </span>
+                                                                    )}
+                                                                    {summary.reclamacoes > 0 && (
+                                                                        <span style={{ background: '#EF444420', color: '#EF4444', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
+                                                                            {summary.reclamacoes} Reclamação{summary.reclamacoes > 1 ? 'ões' : ''}
+                                                                        </span>
+                                                                    )}
+                                                                    {summary.sugestoes > 0 && (
+                                                                        <span style={{ background: '#6B728020', color: '#6B7280', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 500 }}>
+                                                                            {summary.sugestoes} Sugestão{summary.sugestoes > 1 ? 'ões' : ''}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
                                                     <td>
                                                         <span style={{
                                                             background: c.status === 'Ativo' ? '#10B98122' : c.status === 'Em negociação' ? '#F59E0B22' : '#EF444422',
@@ -1993,9 +2251,6 @@ export default function ComercialPage() {
                                             </button>
                                             <button className={`finance-tab ${clientTab === 'rentabilidade' ? 'active' : ''}`} onClick={() => setClientTab('rentabilidade')}>
                                                 <PieChart size={16} /> Rentabilidade
-                                            </button>
-                                            <button className={`finance-tab ${clientTab === 'reunioes' ? 'active' : ''}`} onClick={() => setClientTab('reunioes')}>
-                                                <Presentation size={16} /> Reuniões
                                             </button>
                                             <button className={`finance-tab ${clientTab === 'feedbacks' ? 'active' : ''}`} onClick={() => setClientTab('feedbacks')}>
                                                 <Sparkles size={16} /> Feedbacks
@@ -2185,58 +2440,6 @@ export default function ComercialPage() {
                                                 );
                                             })()}
 
-                                            {clientTab === 'reunioes' && (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                                                    <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 12 }}>
-                                                        <h4 style={{ marginBottom: 16, fontSize: 14 }}>Agendar Nova Reunião</h4>
-                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                                                            <input type="text" className="form-input" placeholder="Título. Ex: Alinhamento Mensal" value={newMeeting.title || ''} onChange={e => setNewMeeting({ ...newMeeting, title: e.target.value })} />
-                                                            <input type="datetime-local" className="form-input" value={newMeeting.date || ''} onChange={e => setNewMeeting({ ...newMeeting, date: e.target.value })} />
-                                                        </div>
-                                                        <textarea className="form-input" rows={2} placeholder="Pauta / Observações..." value={newMeeting.observations || ''} onChange={e => setNewMeeting({ ...newMeeting, observations: e.target.value })} style={{ marginBottom: 12 }} />
-                                                        <button className="btn btn-primary" onClick={handleCreateMeeting}>Agendar</button>
-                                                    </div>
-
-                                                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 16 }}>
-                                                        <h4 style={{ marginBottom: 16, fontSize: 14 }}>Próximas Reuniões</h4>
-                                                        {(() => {
-                                                            const upcomingMeetings = meetings.filter(m => m.client_id === selectedClient.id && m.status === 'Agendada' && new Date(m.date) >= getBahiaDate());
-                                                            if (upcomingMeetings.length === 0) return <div className="text-muted text-center" style={{ fontSize: 13 }}>Nenhuma reunião futura.</div>;
-                                                            return (
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                                                    {upcomingMeetings.map(m => (
-                                                                        <div key={m.id} style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 8 }}>
-                                                                            {editingMeetingId === m.id ? (
-                                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                                                                    <input type="text" className="form-input" value={editingMeetingForm.title || ''} onChange={e => setEditingMeetingForm({ ...editingMeetingForm, title: e.target.value })} />
-                                                                                    <input type="datetime-local" className="form-input" value={editingMeetingForm.date || ''} onChange={e => setEditingMeetingForm({ ...editingMeetingForm, date: e.target.value })} />
-                                                                                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-                                                                                        <button className="btn btn-secondary" onClick={() => setEditingMeetingId(null)}>Voltar</button>
-                                                                                        <button className="btn btn-primary" onClick={() => handleUpdateMeeting(m.id)}>Salvar</button>
-                                                                                    </div>
-                                                                                </div>
-                                                                            ) : (
-                                                                                <>
-                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                                        <strong style={{ fontSize: 14 }}>{m.title}</strong>
-                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                                                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(m.date).toLocaleString('pt-br')}</span>
-                                                                                            <button className="btn" style={{ padding: 4, background: 'transparent' }} onClick={() => { setEditingMeetingId(m.id); setEditingMeetingForm({ ...m }); }} title="Editar">📝</button>
-                                                                                            <button className="btn" style={{ padding: 4, background: 'transparent', color: 'var(--danger)' }} onClick={() => handleDeleteMeeting(m.id)} title="Cancelar">✕</button>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>{m.observations || 'Sem observações'}</div>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                </div>
-                                            )}
-
                                             {clientTab === 'feedbacks' && (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                                                     <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 12 }}>
@@ -2319,52 +2522,108 @@ export default function ComercialPage() {
                         </div>
                     </div>
 
-                    <div className="table-card">
-                        <div className="table-card-title">Detalhamento de Comissionamento</div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table className="finance-table">
-                                <thead>
-                                    <tr>
-                                        <th>Vendedor</th>
-                                        <th>Receita (Mês)</th>
-                                        <th>Patente Atual</th>
-                                        <th>% Comissão</th>
-                                        <th>Comissão Estimada</th>
-                                        <th style={{ textAlign: 'right' }}>Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {teamStats.map(s => (
-                                        <tr key={s.name}>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 'bold', color: '#000' }}>
-                                                        {s.name.substring(0, 1)}
-                                                    </div>
+                    {/* Seller Cards Grid */}
+                    <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
+                            Detalhamento de Comissionamento
+                        </div>
+                        {teamStats.length === 0 ? (
+                            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                                Nenhum vendedor ativo neste período.
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+                                {teamStats.map(s => (
+                                    <div key={s.name} style={{
+                                        background: 'var(--bg-secondary)',
+                                        border: '1px solid rgba(255,255,255,0.06)',
+                                        borderRadius: 14,
+                                        padding: '20px 20px 16px',
+                                        display: 'flex', flexDirection: 'column', gap: 14,
+                                        transition: 'border-color 0.2s',
+                                    }}>
+                                        {/* Header: avatar + name + tier */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <div style={{
+                                                width: 40, height: 40, borderRadius: '50%', background: s.color,
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: 16, fontWeight: 700, color: '#000', flexShrink: 0
+                                            }}>
+                                                {s.name.charAt(0)}
+                                            </div>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {s.name}
                                                 </div>
-                                            </td>
-                                            <td>{formatCurrency(s.value)}</td>
-                                            <td>
-                                                <span style={{
-                                                    padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                                                    background: 'rgba(249, 115, 22, 0.1)', color: 'var(--primary)'
-                                                }}>
-                                                    {s.currentTierName}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                                    <Award size={12} style={{ color: '#F97316' }} />
+                                                    <span style={{
+                                                        fontSize: 11, fontWeight: 600, color: '#F97316',
+                                                        background: 'rgba(249,115,22,0.1)', padding: '1px 7px', borderRadius: 10
+                                                    }}>
+                                                        {s.currentTierName}
+                                                    </span>
+                                                    {s.currentTierPerc > 0 && (
+                                                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.currentTierPerc}% comissão</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Metrics row */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '12px 14px' }}>
+                                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Receita</div>
+                                                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1 }}>{formatCurrency(s.value)}</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(16,185,129,0.07)', borderRadius: 8, padding: '12px 14px', border: '1px solid rgba(16,185,129,0.15)' }}>
+                                                <div style={{ fontSize: 10, color: '#10B981', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Comissão</div>
+                                                <div style={{ fontSize: 15, fontWeight: 700, color: '#10B981', lineHeight: 1 }}>{formatCurrency(s.comissaoAtual)}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Goal progress bar */}
+                                        {s.metaVal > 0 && (
+                                            <div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+                                                    <span>Meta do período</span>
+                                                    <span style={{ fontWeight: 600, color: s.metaPerc >= 100 ? '#10B981' : s.metaPerc >= 50 ? '#F59E0B' : 'var(--text-muted)' }}>
+                                                        {s.metaPerc.toFixed(0)}%
+                                                    </span>
+                                                </div>
+                                                <div style={{ height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                                                    <div style={{
+                                                        height: '100%',
+                                                        width: `${Math.min(s.metaPerc, 100)}%`,
+                                                        background: s.metaPerc >= 100 ? '#10B981' : s.metaPerc >= 50 ? '#F59E0B' : '#EF4444',
+                                                        borderRadius: 3, transition: 'width 0.5s ease'
+                                                    }} />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Next tier progress */}
+                                        {s.nextTierVal > 0 && (
+                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>Próxima faixa</span>
+                                                <span style={{ color: '#F97316', fontWeight: 600 }}>
+                                                    faltam {formatCurrency(s.nextTierVal - s.value)}
                                                 </span>
-                                            </td>
-                                            <td>{s.currentTierPerc}%</td>
-                                            <td style={{ fontWeight: 600, color: 'var(--success)' }}>{formatCurrency(s.comissaoAtual)}</td>
-                                            <td style={{ textAlign: 'right' }}>
-                                                <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => { setSelectedSellerStats(s); setShowSellerModal(true); }}>
-                                                    Ver Detalhes
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                            </div>
+                                        )}
+
+                                        {/* Action */}
+                                        <button
+                                            className="btn btn-secondary"
+                                            style={{ width: '100%', fontSize: 12, padding: '9px 16px', marginTop: 2, cursor: 'pointer', textAlign: 'center' }}
+                                            onClick={() => { setSelectedSellerStats(s); setShowSellerModal(true); }}
+                                        >
+                                            Ver Detalhes
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -2557,7 +2816,9 @@ export default function ComercialPage() {
 
                                         <div style={{ display: 'flex', gap: 12, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.05)', justifyContent: 'space-between' }}>
                                             <div>
-                                                <button className="btn" style={{ fontSize: 13, background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: 'none', cursor: 'pointer', padding: '8px 16px', borderRadius: 8 }} onClick={() => handleDeleteDeal(selectedDeal)}>Excluir</button>
+                                                {selectedDeal.stage !== 'perdido' && (
+                                                    <button className="btn" style={{ fontSize: 13, background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: 'none', cursor: 'pointer', padding: '8px 16px', borderRadius: 8 }} onClick={() => handleDeleteDeal(selectedDeal)}>Excluir</button>
+                                                )}
                                             </div>
                                             <div>
                                                 <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={() => setEditingDealData(selectedDeal)}>Editar</button>
@@ -2972,11 +3233,29 @@ export default function ComercialPage() {
                     </div>
                 );
             })()}
+
+            {/* TAB LEADS PERDIDOS */}
+            {activeTab === 'perdidos' && (
+                <LeadsLostTab
+                    deals={deals}
+                    onRetomar={async (dealId: string, recordId: string) => {
+                        try {
+                            await updateDeal(dealId, { stage: 'prospeccao', data_entrada_etapa: new Date().toISOString(), motivo_perda: undefined });
+                            await updateLeadLossRecord(recordId, { status: 'retomado' });
+                            setDealsData(deals.map(d => d.id === dealId ? { ...d, stage: 'prospeccao', data_entrada_etapa: new Date().toISOString() } : d));
+                            showToast('Lead retomado para Prospecção!');
+                        } catch (e) {
+                            console.error('Erro ao retomar lead:', e);
+                            showToast('Erro ao retomar lead. Tente novamente.');
+                        }
+                    }}
+                />
+            )}
         </div >
     );
 }
 
-function KanbanColumn({ stage, colDeals, colTotal, onCardClick }: { stage: any, colDeals: Deal[], colTotal: number, onCardClick: (d: Deal) => void }) {
+function KanbanColumn({ stage, colDeals, colTotal, onCardClick, feedbackMap }: { stage: any, colDeals: Deal[], colTotal: number, onCardClick: (d: Deal) => void, feedbackMap?: Record<string, { type: string; color: string }> }) {
     const { setNodeRef, isOver } = useDroppable({ id: stage.id });
     return (
         <div ref={setNodeRef} style={{
@@ -2997,7 +3276,7 @@ function KanbanColumn({ stage, colDeals, colTotal, onCardClick }: { stage: any, 
                 {formatCurrency(colTotal)}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {colDeals.map(d => <KanbanCard key={d.id} deal={d} onClick={() => onCardClick(d)} />)}
+                {colDeals.map(d => <KanbanCard key={d.id} deal={d} onClick={() => onCardClick(d)} feedbackInfo={feedbackMap?.[d.company]} />)}
                 {colDeals.length === 0 && (
                     <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 8 }}>
                         Solte um negócio aqui
@@ -3008,7 +3287,7 @@ function KanbanColumn({ stage, colDeals, colTotal, onCardClick }: { stage: any, 
     );
 }
 
-function KanbanCard({ deal, isOverlay, onClick }: { deal: Deal, isOverlay?: boolean, onClick?: () => void }) {
+function KanbanCard({ deal, isOverlay, onClick, feedbackInfo }: { deal: Deal, isOverlay?: boolean, onClick?: () => void, feedbackInfo?: { type: string; color: string } }) {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: deal.id,
         data: deal

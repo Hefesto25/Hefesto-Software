@@ -9,7 +9,7 @@ import type {
     FinancialType, FinancialCategory, BudgetPlan,
     FinancialTransaction, SellerGoal, OperationalTask, SubtarefaOperacional,
     ClientCRM, MeetingCRM, FeedbackCRM,
-    AdminDemand, AdminMeeting, ComercialTask,
+    ComercialTask,
     Contract, LegalDocument, LegalPendency,
     CalendarEvent,
     Notification, NotificationSettings,
@@ -25,7 +25,8 @@ import type {
     FinancialTax, ComercialCommissionTier,
     ActiveTaskMention,
     DiretorioFerramentaPredefinida,
-    BankImport, BankImportTransaction
+    BankImport, BankImportTransaction,
+    LeadLossRecord
 } from './types';
 import type { ParsedTransaction } from './bankParser';
 import { reconcileTransactions } from './bankParser';
@@ -921,49 +922,6 @@ export async function removeFeedback(id: string) {
     if (error) throw error;
 }
 
-// ===== ADMINISTRATIVE =====
-export function useAdminDemands() {
-    return useSupabaseTable<AdminDemand>('admin_demands', { column: 'created_at', ascending: false });
-}
-
-export async function addAdminDemand(demand: Omit<AdminDemand, 'id' | 'created_at'>) {
-    const { data, error } = await supabase.from('admin_demands').insert(demand).select().single();
-    if (error) throw error;
-    return data as AdminDemand;
-}
-
-export async function updateAdminDemand(id: string, updates: Partial<AdminDemand>) {
-    const { data, error } = await supabase.from('admin_demands').update(updates).eq('id', id).select().single();
-    if (error) throw error;
-    return data as AdminDemand;
-}
-
-export async function removeAdminDemand(id: string) {
-    const { error } = await supabase.from('admin_demands').delete().eq('id', id);
-    if (error) throw error;
-}
-
-export function useAdminMeetings() {
-    return useSupabaseTable<AdminMeeting>('admin_meetings', { column: 'data_hora', ascending: false });
-}
-
-export async function addAdminMeeting(meeting: Omit<AdminMeeting, 'id' | 'created_at'>) {
-    const { data, error } = await supabase.from('admin_meetings').insert(meeting).select().single();
-    if (error) throw error;
-    return data as AdminMeeting;
-}
-
-export async function updateAdminMeeting(id: string, updates: Partial<AdminMeeting>) {
-    const { data, error } = await supabase.from('admin_meetings').update(updates).eq('id', id).select().single();
-    if (error) throw error;
-    return data as AdminMeeting;
-}
-
-export async function removeAdminMeeting(id: string) {
-    const { error } = await supabase.from('admin_meetings').delete().eq('id', id);
-    if (error) throw error;
-}
-
 // ===== COMERCIAL TASKS =====
 export function useComercialTasks() {
     return useSupabaseTable<ComercialTask>('comercial_tasks', { column: 'created_at', ascending: false });
@@ -1458,21 +1416,6 @@ export function useActiveTasksForMention(userModules: string[] = []) {
                 }
 
 
-                // Administrativo
-                if (userModules.includes('/administrativo') || userModules.includes('/configuracoes') || userModules.length === 0) {
-                    const { data: admData } = await supabase.from('admin_demands')
-                        .select('id, titulo, status')
-                        .not('status', 'in', '("Finalizado")');
-                    if (admData) {
-                        allTasks.push(...admData.map((a: any) => ({
-                            id: a.id,
-                            title: a.titulo,
-                            module: 'Administrativo' as const,
-                            status: a.status
-                        })));
-                    }
-                }
-
                 // Financeiro
                 if (userModules.includes('/financeiro') || userModules.length === 0) {
                     const { data: finData } = await supabase.from('financial_transactions')
@@ -1953,4 +1896,152 @@ export async function pinMensagem(id: string, pinada: boolean) {
         .single();
     if (error) throw error;
     return data as Mensagem;
+}
+
+// ─── Lead Loss Records ────────────────────────────────────────────────────────
+
+export function useLeadLossRecords() {
+    return useSupabaseTable<LeadLossRecord>('lead_loss_records', { column: 'data_retorno', ascending: true });
+}
+
+export async function addLeadLossRecord(record: Omit<LeadLossRecord, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabase
+        .from('lead_loss_records')
+        .insert(record)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as LeadLossRecord;
+}
+
+export async function updateLeadLossRecord(id: string, updates: Partial<LeadLossRecord>) {
+    const { data, error } = await supabase
+        .from('lead_loss_records')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as LeadLossRecord;
+}
+
+export async function removeLeadLossRecord(id: string) {
+    const { error } = await supabase
+        .from('lead_loss_records')
+        .delete()
+        .eq('id', id);
+    if (error) throw error;
+}
+
+export async function getLeadLossRecordByDealId(dealId: string): Promise<LeadLossRecord | null> {
+    const { data, error } = await supabase
+        .from('lead_loss_records')
+        .select('*')
+        .eq('deal_id', dealId)
+        .maybeSingle();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data as LeadLossRecord | null;
+}
+
+// ─── End Lead Loss Records ───────────────────────────────────────────────────
+
+/**
+ * Check for lost leads with return dates that have passed and notify commercial users.
+ * Should be called once per session/page load.
+ */
+export async function checkLostLeadReturnNotifications(comercialUserIds: string[]) {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+
+        // Get all pending loss records with return date <= today
+        const { data: records, error } = await supabase
+            .from('lead_loss_records')
+            .select('*, deals(*)')
+            .eq('status', 'pendente')
+            .lte('data_retorno', today);
+
+        if (error || !records || records.length === 0) return;
+
+        for (const record of records) {
+            const deal = record.deals as any;
+            if (!deal) continue;
+
+            // Check if notification was already sent today
+            const lastNotif = record.ultima_notificacao;
+            if (lastNotif && lastNotif.startsWith(today)) continue;
+
+            // Send notification to all commercial users
+            for (const userId of comercialUserIds) {
+                await supabase.from('notificacoes').insert({
+                    usuario_id: userId,
+                    tipo: 'lead_retorno',
+                    titulo: 'Lead pronto para retomada',
+                    mensagem: `Lead "${deal.company}" está pronto para retomada - Motivo anterior: ${record.motivo_perda}`,
+                    lida: false,
+                    redirecionamento: '/comercial?tab=perdidos',
+                    modulo_origem: 'comercial',
+                });
+            }
+
+            // Update last notification date
+            await supabase.from('lead_loss_records').update({
+                ultima_notificacao: new Date().toISOString(),
+                notificacoes_enviadas: (record.notificacoes_enviadas || 0) + 1,
+            }).eq('id', record.id);
+        }
+    } catch (err) {
+        console.error('Erro ao verificar notificações de leads perdidos:', err);
+    }
+}
+
+/**
+ * Sync all clients from CRM to Directory
+ * This is a fallback in case triggers fail silently
+ * Should only be used for data recovery, not daily operations
+ */
+export async function syncClientsToDirectory() {
+    try {
+        const { data: clients, error: fetchErr } = await supabase
+            .from('clients')
+            .select('*');
+
+        if (fetchErr) throw fetchErr;
+        if (!clients) return { success: false, error: 'No clients found' };
+
+        const failures: { id: string; error: string }[] = [];
+
+        for (const client of clients) {
+            const { error: syncErr } = await supabase
+                .from('diretorio_clientes')
+                .upsert({
+                    id: client.id,
+                    nome: client.name,
+                    segmento: client.segment,
+                    email: client.contact_email,
+                    telefone: client.contact_phone,
+                    site: client.website,
+                    status: (client.status || 'Ativo').toLowerCase(),
+                    observacoes: client.observations,
+                }, { onConflict: 'id' });
+
+            if (syncErr) {
+                console.error(`Failed to sync client ${client.id}:`, syncErr);
+                failures.push({ id: client.id, error: syncErr.message });
+            }
+        }
+
+        if (failures.length > 0) {
+            return {
+                success: false,
+                synced: clients.length - failures.length,
+                failed: failures.length,
+                failures,
+            };
+        }
+
+        return { success: true, synced: clients.length };
+    } catch (error) {
+        console.error('Sync failed:', error);
+        return { success: false, error: String(error) };
+    }
 }

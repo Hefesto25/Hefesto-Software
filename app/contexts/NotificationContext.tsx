@@ -79,7 +79,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (!userId) return;
 
         const channel = supabase
-            .channel('notifications-realtime')
+            .channel(`notifications-realtime-${userId}`)
             .on(
                 'postgres_changes',
                 {

@@ -1053,7 +1053,8 @@ textarea.form-input:focus {
 
 .chat-header {
   padding: 14px 20px;
-  border-bottom: 1px solid var(--border-default);
+  background: var(--accent-muted);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.25);
   display: flex;
   align-items: center;
   gap: 10px;

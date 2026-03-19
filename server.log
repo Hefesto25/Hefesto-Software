@@ -1,0 +1,152 @@
+
+> hefesto-temp@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.113:3000
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 1895ms
+ GET / 200 in 1703ms (compile: 947ms, proxy.ts: 383ms, render: 374ms)
+ GET / 200 in 441ms (compile: 34ms, proxy.ts: 372ms, render: 35ms)
+ GET / 200 in 134ms (compile: 42ms, proxy.ts: 41ms, render: 51ms)
+ GET / 200 in 211ms (compile: 42ms, proxy.ts: 75ms, render: 94ms)
+ GET /comercial 200 in 92ms (compile: 55ms, proxy.ts: 15ms, render: 22ms)
+✓ Compiled in 362ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 508ms (compile: 139ms, proxy.ts: 13ms, render: 355ms)
+✓ Compiled in 369ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 321ms (compile: 75ms, proxy.ts: 23ms, render: 223ms)
+ GET /comercial 200 in 94ms (compile: 27ms, proxy.ts: 24ms, render: 43ms)
+ GET /diretorio 200 in 251ms (compile: 183ms, proxy.ts: 42ms, render: 27ms)
+ GET / 200 in 58ms (compile: 15ms, proxy.ts: 25ms, render: 18ms)
+ GET /comercial 200 in 14ms (compile: 3ms, proxy.ts: 3ms, render: 8ms)
+✓ Compiled in 341ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 502ms (compile: 146ms, proxy.ts: 70ms, render: 286ms)
+✓ Compiled in 154ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 559ms (compile: 198ms, proxy.ts: 48ms, render: 313ms)
+✓ Compiled in 209ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 304ms (compile: 68ms, proxy.ts: 22ms, render: 215ms)
+ GET /comercial 200 in 457ms (compile: 106ms, proxy.ts: 192ms, render: 159ms)
+ GET /operacional 200 in 653ms (compile: 490ms, proxy.ts: 76ms, render: 87ms)
+ GET /comercial 200 in 39ms (compile: 7ms, proxy.ts: 10ms, render: 21ms)
+ GET /operacional 200 in 65ms (compile: 17ms, proxy.ts: 25ms, render: 23ms)
+ GET /diretorio 200 in 45ms (compile: 14ms, proxy.ts: 12ms, render: 19ms)
+ GET /templates 200 in 129ms (compile: 108ms, proxy.ts: 13ms, render: 8ms)
+ GET /operacional 200 in 46ms (compile: 8ms, proxy.ts: 17ms, render: 21ms)
+ GET /administrativo 200 in 133ms (compile: 87ms, proxy.ts: 29ms, render: 17ms)
+ GET /comercial 200 in 38ms (compile: 12ms, proxy.ts: 11ms, render: 15ms)
+✓ Compiled in 1270ms
+ GET /comercial 200 in 1299ms (compile: 285ms, proxy.ts: 84ms, render: 929ms)
+ GET / 200 in 1180ms (compile: 818ms, proxy.ts: 8ms, render: 355ms)
+ GET /comercial 200 in 65ms (compile: 11ms, proxy.ts: 9ms, render: 46ms)
+✓ Compiled in 180ms
+✓ Compiled in 52ms
+⚠ Fast Refresh had to perform a full reload when ./app/contexts/AuthContext.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+⚠ Fast Refresh had to perform a full reload when ./app/contexts/AuthContext.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+✓ Compiled in 60ms
+ GET /comercial 200 in 513ms (compile: 109ms, proxy.ts: 51ms, render: 354ms)
+ GET /comercial 200 in 54ms (compile: 3ms, proxy.ts: 3ms, render: 47ms)
+✓ Compiled in 614ms
+⚠ Fast Refresh had to perform a full reload when ./lib/hooks.ts changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+✓ Compiled in 5ms
+⚠ Fast Refresh had to perform a full reload when ./lib/hooks.ts changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 1064ms (compile: 412ms, proxy.ts: 11ms, render: 641ms)
+ GET /comercial 200 in 336ms (compile: 10ms, proxy.ts: 10ms, render: 316ms)
+✓ Compiled in 116ms
+✓ Compiled in 127ms
+✓ Compiled in 142ms
+✓ Compiled in 548ms
+⚠ Fast Refresh had to perform a full reload when ./lib/hooks.ts changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+⚠ Fast Refresh had to perform a full reload when ./lib/hooks.ts changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 1855ms (compile: 812ms, proxy.ts: 306ms, render: 737ms)
+ GET / 200 in 1830ms (compile: 962ms, proxy.ts: 288ms, render: 579ms)
+ GET /comercial 200 in 165ms (compile: 17ms, proxy.ts: 14ms, render: 134ms)
+ GET /comercial 200 in 847ms (compile: 18ms, proxy.ts: 15ms, render: 815ms)
+ GET /comercial 200 in 228ms (compile: 32ms, proxy.ts: 151ms, render: 45ms)
+ GET / 200 in 846ms (compile: 402ms, proxy.ts: 10ms, render: 435ms)
+ GET /comercial 200 in 930ms (compile: 44ms, proxy.ts: 10ms, render: 877ms)
+ GET / 200 in 475ms (compile: 73ms, proxy.ts: 6ms, render: 397ms)
+ GET / 200 in 378ms (compile: 160ms, proxy.ts: 9ms, render: 209ms)
+ GET /comercial 200 in 542ms (compile: 171ms, proxy.ts: 7ms, render: 364ms)
+ GET / 200 in 199ms (compile: 15ms, proxy.ts: 12ms, render: 172ms)
+ GET / 200 in 195ms (compile: 47ms, proxy.ts: 31ms, render: 117ms)
+ GET / 200 in 145ms (compile: 9ms, proxy.ts: 11ms, render: 125ms)
+ GET / 200 in 165ms (compile: 20ms, proxy.ts: 6ms, render: 139ms)
+ GET / 200 in 155ms (compile: 15ms, proxy.ts: 10ms, render: 129ms)
+ GET / 200 in 145ms (compile: 18ms, proxy.ts: 16ms, render: 112ms)
+ GET / 200 in 122ms (compile: 13ms, proxy.ts: 5ms, render: 104ms)
+ GET / 200 in 134ms (compile: 10ms, proxy.ts: 11ms, render: 113ms)
+ GET / 200 in 163ms (compile: 16ms, proxy.ts: 5ms, render: 141ms)
+ GET / 200 in 158ms (compile: 17ms, proxy.ts: 10ms, render: 131ms)
+ GET / 200 in 154ms (compile: 21ms, proxy.ts: 8ms, render: 125ms)
+ GET / 200 in 136ms (compile: 17ms, proxy.ts: 7ms, render: 113ms)
+ GET / 200 in 143ms (compile: 7ms, proxy.ts: 12ms, render: 125ms)
+ GET / 200 in 181ms (compile: 20ms, proxy.ts: 9ms, render: 153ms)
+ GET / 200 in 183ms (compile: 15ms, proxy.ts: 13ms, render: 155ms)
+ GET / 200 in 221ms (compile: 17ms, proxy.ts: 6ms, render: 198ms)
+ GET / 200 in 220ms (compile: 12ms, proxy.ts: 10ms, render: 198ms)
+ GET / 200 in 216ms (compile: 41ms, proxy.ts: 21ms, render: 154ms)
+ GET / 200 in 156ms (compile: 17ms, proxy.ts: 10ms, render: 129ms)
+ GET / 200 in 161ms (compile: 26ms, proxy.ts: 30ms, render: 106ms)
+ GET / 200 in 125ms (compile: 8ms, proxy.ts: 11ms, render: 105ms)
+ GET / 200 in 116ms (compile: 11ms, proxy.ts: 11ms, render: 94ms)
+ GET / 200 in 102ms (compile: 11ms, proxy.ts: 5ms, render: 86ms)
+ GET / 200 in 176ms (compile: 8ms, proxy.ts: 5ms, render: 163ms)
+ GET / 200 in 198ms (compile: 6ms, proxy.ts: 9ms, render: 184ms)
+ GET / 200 in 235ms (compile: 30ms, proxy.ts: 39ms, render: 166ms)
+ GET / 200 in 226ms (compile: 10ms, proxy.ts: 12ms, render: 205ms)
+ GET / 200 in 213ms (compile: 32ms, proxy.ts: 11ms, render: 171ms)
+ GET / 200 in 420ms (compile: 8ms, proxy.ts: 8ms, render: 405ms)
+ GET / 200 in 370ms (compile: 34ms, proxy.ts: 41ms, render: 296ms)
+ GET / 200 in 261ms (compile: 22ms, proxy.ts: 13ms, render: 226ms)
+ GET /chat 200 in 556ms (compile: 508ms, proxy.ts: 16ms, render: 32ms)
+✓ Compiled in 1034ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 892ms (compile: 430ms, proxy.ts: 56ms, render: 406ms)
+ GET /chat 200 in 903ms (compile: 44ms, proxy.ts: 55ms, render: 804ms)
+✓ Compiled in 166ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 445ms (compile: 109ms, proxy.ts: 45ms, render: 291ms)
+✓ Compiled in 311ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 521ms (compile: 187ms, proxy.ts: 30ms, render: 305ms)
+ GET /comercial 200 in 119ms (compile: 44ms, proxy.ts: 40ms, render: 35ms)
+✓ Compiled in 251ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 672ms (compile: 185ms, proxy.ts: 35ms, render: 452ms)
+ GET /comercial 200 in 33ms (compile: 2ms, proxy.ts: 3ms, render: 28ms)
+✓ Compiled in 208ms
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+⚠ Fast Refresh had to perform a full reload when ./app/comercial/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /comercial 200 in 661ms (compile: 131ms, proxy.ts: 23ms, render: 507ms)
+ GET /comercial 200 in 244ms (compile: 24ms, proxy.ts: 13ms, render: 207ms)
+ GET /chat 200 in 121ms (compile: 46ms, proxy.ts: 35ms, render: 40ms)
+✓ Compiled in 651ms
+✓ Compiled in 123ms
+✓ Compiled in 146ms
+✓ Compiled in 54ms
+✓ Compiled in 208ms
+✓ Compiled in 142ms
+✓ Compiled in 74ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /chat 200 in 550ms (compile: 105ms, proxy.ts: 30ms, render: 415ms)
+✓ Compiled in 123ms
+✓ Compiled in 163ms
+✓ Compiled in 71ms
+✓ Compiled in 728ms
+✓ Compiled in 59ms
+ GET /chat 200 in 328ms (compile: 116ms, proxy.ts: 17ms, render: 196ms)
+✓ Compiled in 278ms
+✓ Compiled in 64ms
+✓ Compiled in 63ms
+ GET / 200 in 1252ms (compile: 495ms, proxy.ts: 157ms, render: 600ms)
+ GET /calendario 200 in 960ms (compile: 920ms, proxy.ts: 23ms, render: 16ms)

@@ -275,7 +275,7 @@ export interface SubtarefaOperacional {
 export interface ActiveTaskMention {
     id: string;
     title: string;
-    module: 'Operacional' | 'Comercial' | 'Administrativo' | 'Financeiro';
+    module: 'Operacional' | 'Comercial' | 'Financeiro';
     status: string;
 }
 
@@ -330,29 +330,17 @@ export interface FeedbackCRM {
     created_at?: string;
 }
 
-export interface AdminDemand {
+export interface LeadLossRecord {
     id: string;
-    titulo: string;
+    deal_id: string;
+    motivo_perda: string;
     descricao?: string;
-    responsavel_id?: string; // legacy single
-    responsaveis_ids?: string[]; // new multi-assignee
-    data_prevista?: string;
-    data_conclusao?: string;
-    prioridade?: 'Alta' | 'Média' | 'Baixa';
-    status: 'A Fazer' | 'Fazendo' | 'Finalizado';
+    data_retorno: string;
+    status: 'pendente' | 'retomado' | 'descartado';
+    notificacoes_enviadas?: number;
+    ultima_notificacao?: string;
     created_at?: string;
-}
-
-export interface AdminMeeting {
-    id: string;
-    titulo: string;
-    participantes?: string; // legacy text
-    participantes_ids?: string[]; // new multi-assignee
-    data_hora?: string;
-    pauta?: string;
-    local_link?: string;
-    status: 'Agendada' | 'Realizada' | 'Cancelada';
-    created_at?: string;
+    updated_at?: string;
 }
 
 export interface ComercialTask {
@@ -416,7 +404,7 @@ export interface CalendarEvent {
     owner_id?: string;
     descricao?: string;
     cor?: string;
-    origem?: 'manual' | 'crm_reuniao' | 'admin_reuniao' | 'tarefa';
+    origem?: 'manual' | 'crm_reuniao' | 'tarefa';
     reuniao_id?: string;
     created_at?: string;
 }
@@ -425,7 +413,7 @@ export interface CalendarEvent {
 export interface Notification {
     id: string;
     usuario_id: string;
-    tipo: 'tarefa_atribuida' | 'tarefa_vencimento' | 'mencao_chat';
+    tipo: 'tarefa_atribuida' | 'tarefa_vencimento' | 'mencao_chat' | 'lead_retorno';
     titulo: string;
     mensagem: string;
     lida: boolean;

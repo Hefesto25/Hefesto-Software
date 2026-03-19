@@ -30,7 +30,7 @@ DO $$
 DECLARE
     t TEXT;
     table_list TEXT[] := ARRAY[
-        'admin_demands', 'admin_meetings', 'budget_plan', 'calendar_events', 'channels', 
+        'budget_plan', 'calendar_events', 'channels',
         'chat_messages', 'contacts', 'contracts', 'deals', 'expense_categories', 
         'financial_categories', 'financial_data', 'financial_goals', 'financial_transactions', 
         'financial_types', 'legal_documents', 'legal_pendencies', 'tasks', 'team_members'

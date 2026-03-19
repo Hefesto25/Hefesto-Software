@@ -14,7 +14,7 @@ ALTER FUNCTION public.handle_new_user() SET search_path = '';
 -- Vamos restringir o acesso apenas a usuários AUTENTICADOS e remover permissões universais de escrita.
 
 -- Lista de tabelas afetadas baseada no relatório do Linter:
--- admin_demands, admin_meetings, budget_plan, calendar_events, channels, chat_messages, 
+-- budget_plan, calendar_events, channels, chat_messages,
 -- contacts, contracts, deals, expense_categories, financial_categories, financial_data, 
 -- financial_goals, financial_transactions, financial_types, legal_documents, legal_pendencies, 
 -- tasks, team_members
@@ -23,7 +23,7 @@ DO $$
 DECLARE
     t TEXT;
     table_list TEXT[] := ARRAY[
-        'admin_demands', 'admin_meetings', 'budget_plan', 'calendar_events', 'channels', 
+        'budget_plan', 'calendar_events', 'channels',
         'chat_messages', 'contacts', 'contracts', 'deals', 'expense_categories', 
         'financial_categories', 'financial_data', 'financial_goals', 'financial_transactions', 
         'financial_types', 'legal_documents', 'legal_pendencies', 'tasks', 'team_members'

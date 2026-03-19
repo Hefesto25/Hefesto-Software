@@ -105,62 +105,6 @@ Deno.serve(async (req: Request) => {
                 }
             }
 
-            // Get admin demands with deadline on targetDate
-            const { data: demands } = await supabase
-                .from("admin_demands")
-                .select("*")
-                .eq("prazo", targetStr)
-                .neq("status", "Finalizado")
-                .neq("status", "Cancelado");
-
-            if (demands) {
-                for (const demand of demands) {
-                    if (!demand.responsavel_id) continue;
-
-                    // Check settings
-                    const { data: settings } = await supabase
-                        .from("notification_settings")
-                        .select("*")
-                        .eq("usuario_id", demand.responsavel_id)
-                        .maybeSingle();
-
-                    if (settings && !settings.notif_tarefa_vencimento) continue;
-
-                    const configuredDays = settings?.vencimento_dias_antes
-                        ? settings.vencimento_dias_antes.split(",").map(Number)
-                        : [5, 3, 1];
-
-                    if (!configuredDays.includes(daysAhead)) continue;
-
-                    // Check duplicates
-                    const { data: existing } = await supabase
-                        .from("notificacoes")
-                        .select("id")
-                        .eq("usuario_id", demand.responsavel_id)
-                        .eq("tipo", "tarefa_vencimento")
-                        .like("mensagem", `%${demand.titulo}%${daysAhead} dia%`)
-                        .maybeSingle();
-
-                    if (existing) continue;
-
-                    const urgency =
-                        daysAhead === 1 ? "⚠️ URGENTE" : daysAhead <= 3 ? "⏰ Atenção" : "📅 Lembrete";
-                    const titulo = `${urgency}: Demanda vence em ${daysAhead} dia${daysAhead > 1 ? "s" : ""}`;
-                    const mensagem = `A demanda '${demand.titulo}' vence em ${daysAhead} dia${daysAhead > 1 ? "s" : ""} (${targetStr}).`;
-
-                    await supabase.from("notificacoes").insert({
-                        usuario_id: demand.responsavel_id,
-                        tipo: "tarefa_vencimento",
-                        titulo,
-                        mensagem,
-                        lida: false,
-                        redirecionamento: "/administrativo",
-                        modulo_origem: "administrativo",
-                    });
-
-                    notificationsCreated++;
-                }
-            }
         }
 
         return new Response(
