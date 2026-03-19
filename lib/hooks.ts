@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import type {
     TeamMember, Contact, Deal, Task,
-    Canal, CanalParticipante, Mensagem, FinancialData,
+    Canal, CanalParticipante, Mensagem, DM, DMMensagem, FinancialData,
     ExpenseCategory, FinancialGoal,
     FinancialType, FinancialCategory, BudgetPlan,
     FinancialTransaction, SellerGoal, OperationalTask, SubtarefaOperacional,
@@ -605,7 +605,7 @@ export async function uploadChatFile(file: File, canalId: string) {
 // ============================================================
 
 export function useDMs(userId: string | undefined) {
-    const [data, setData] = useState<any[]>([]);
+    const [data, setData] = useState<DM[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchDMs = async () => {
@@ -617,7 +617,7 @@ export function useDMs(userId: string | undefined) {
             .or(`usuario_a_id.eq.${userId},usuario_b_id.eq.${userId}`)
             .order('ultima_mensagem', { ascending: false, nullsFirst: false });
         if (error) console.error('Error fetching DMs:', error);
-        else setData((result as any[]) ?? []);
+        else setData((result as DM[]) ?? []);
         setLoading(false);
     };
 
@@ -626,7 +626,7 @@ export function useDMs(userId: string | undefined) {
 }
 
 export function useDMMensagens(dmId: string | null) {
-    const [data, setData] = useState<any[]>([]);
+    const [data, setData] = useState<DMMensagem[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchMensagens = async () => {
@@ -638,7 +638,7 @@ export function useDMMensagens(dmId: string | null) {
             .eq('dm_id', dmId)
             .order('created_at', { ascending: true });
         if (error) console.error('Error fetching DM mensagens:', error);
-        else setData((result as any[]) ?? []);
+        else setData((result as DMMensagem[]) ?? []);
         setLoading(false);
     };
 
@@ -681,7 +681,7 @@ export async function sendDMMensagem(payload: {
     // Update last message timestamp
     await supabase.from('dms').update({ ultima_mensagem: new Date().toISOString() }).eq('id', payload.dm_id);
 
-    return { success: true, mensagem: data };
+    return { success: true, mensagem: data as DMMensagem };
 }
 
 export async function deleteDMMensagem(id: string) {

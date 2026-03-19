@@ -425,23 +425,23 @@ export default function ChatPage() {
                                         <Pin size={14} />
                                     </button>
                                 )}
-                                {msg.autor_id === userId && (
+                                 {msg.autor_id === userId && (
                                     <button onClick={() => {
-                                        if (chatMode === 'canais') {
+                                        if (chatMode === 'canais' && 'canal_id' in msg) {
                                             const snapshot = msg;
-                                            setMensagens(prev => prev.map(m =>
+                                            setMensagens((prev: Mensagem[]) => prev.map(m =>
                                                 m.id === msg.id ? { ...m, deletada: true, conteudo: null, arquivo_url: null, arquivo_nome: null } : m
                                             ));
                                             deleteMensagem(msg.id).catch(() => {
-                                                setMensagens(prev => prev.map(m => m.id === snapshot.id ? snapshot : m));
+                                                setMensagens((prev: Mensagem[]) => prev.map(m => m.id === snapshot.id ? snapshot : m));
                                             });
-                                        } else if (chatMode === 'dms') {
+                                        } else if (chatMode === 'dms' && 'dm_id' in msg) {
                                             const snapshot = msg;
-                                            setDMMensagens(prev => prev.map(m =>
+                                            setDMMensagens((prev: DMMensagem[]) => prev.map(m =>
                                                 m.id === msg.id ? { ...m, deletada: true, conteudo: null, arquivo_url: null, arquivo_nome: null } : m
                                             ));
                                             deleteDMMensagem(msg.id).catch(() => {
-                                                setDMMensagens(prev => prev.map(m => m.id === snapshot.id ? snapshot : m));
+                                                setDMMensagens((prev: DMMensagem[]) => prev.map(m => m.id === snapshot.id ? snapshot : m));
                                             });
                                         }
                                     }} title="Apagar"><Trash2 size={14} /></button>
