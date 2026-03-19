@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
@@ -183,13 +184,13 @@ export async function uploadAvatar(file: File, userId: string): Promise<{ succes
 
         const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
         return { success: true, url: data.publicUrl };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error uploading avatar:', error);
-        return { success: false, error: error.message || 'Error uploading file' };
+        return { success: false, error: (error as Error).message || 'Error uploading file' };
     }
 }
 
-export async function deleteUsuarioViaEdge(userId: string): Promise<{ success: boolean; error?: string; details?: any }> {
+export async function deleteUsuarioViaEdge(userId: string): Promise<{ success: boolean; error?: string; details?: unknown }> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, error: 'Sessão expirada. Faça login novamente.' };
 
@@ -291,6 +292,7 @@ export function useTodasSubtarefas() {
         setLoading(false);
     };
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     useEffect(() => { fetch(); }, []);
     return { data, loading, setData, refetch: fetch };
 }
@@ -312,6 +314,7 @@ export function useSubtarefas(tarefaId: string) {
         setLoading(false);
     };
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     useEffect(() => { fetch(); }, [tarefaId]);
     return { data, loading, setData, refetch: fetch };
 }
@@ -511,7 +514,7 @@ export async function sendMensagem(payload: {
     arquivo_nome?: string;
     arquivo_tamanho?: number;
     resposta_de?: string;
-    mencoes_tarefas?: any[];
+    mencoes_tarefas?: ActiveTaskMention[];
 }) {
     const { data, error } = await supabase
         .from('mensagens')
@@ -1374,11 +1377,11 @@ export function useActiveTasksForMention(userModules: string[] = []) {
                         .select('id, titulo, cliente_nome, status')
                         .not('status', 'in', '("Finalizado", "concluido")');
                     if (opData) {
-                        allTasks.push(...opData.map((t: any) => ({
+                        allTasks.push(...opData.map((t: { id: string; titulo: string; cliente_nome: string; status: string }) => ({
                             id: t.id,
                             title: `${t.cliente_nome} - ${t.titulo}`,
                             module: 'Operacional' as const,
-                            status: t.status
+                            status: t.status as OperationalTask['status']
                         })));
                     }
                 }
@@ -1394,7 +1397,7 @@ export function useActiveTasksForMention(userModules: string[] = []) {
                             diagnostico: 'Diagnóstico',
                             negociacao: 'Negociação'
                         };
-                        allTasks.push(...comData.map((d: any) => ({
+                        allTasks.push(...comData.map((d: { id: string; title: string; company: string; stage: string }) => ({
                             id: d.id,
                             title: `${d.company} - ${d.title}`,
                             module: 'Comercial' as const,
@@ -1406,11 +1409,11 @@ export function useActiveTasksForMention(userModules: string[] = []) {
                         .select('id, titulo, status')
                         .not('status', 'eq', 'Finalizado');
                     if (tarefasData) {
-                        allTasks.push(...tarefasData.map((t: any) => ({
+                        allTasks.push(...tarefasData.map((t: { id: string; titulo: string; status: string }) => ({
                             id: t.id,
                             title: t.titulo,
                             module: 'Comercial' as const,
-                            status: t.status
+                            status: t.status as ComercialTask['status']
                         })));
                     }
                 }
@@ -1422,7 +1425,7 @@ export function useActiveTasksForMention(userModules: string[] = []) {
                         .select('id, descricao, status')
                         .eq('status', 'pendente');
                     if (finData) {
-                        allTasks.push(...finData.map((f: any) => ({
+                        allTasks.push(...finData.map((f: { id: string; descricao: string; status: string }) => ({
                             id: f.id,
                             title: f.descricao,
                             module: 'Financeiro' as const,
@@ -1963,7 +1966,7 @@ export async function checkLostLeadReturnNotifications(comercialUserIds: string[
         if (error || !records || records.length === 0) return;
 
         for (const record of records) {
-            const deal = record.deals as any;
+            const deal = record.deals as Deal | undefined;
             if (!deal) continue;
 
             // Check if notification was already sent today

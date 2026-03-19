@@ -116,7 +116,7 @@ export interface Mensagem {
         id: string;
         nome: string;
     };
-    mencoes_tarefas?: any[];
+    mencoes_tarefas?: ActiveTaskMention[];
 }
 
 export interface DM {

@@ -105,6 +105,7 @@ export default function ChatPage() {
     // Set initial channel
     useEffect(() => {
         if (chatMode === 'canais' && canais.length > 0 && !activeCanalId) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setActiveCanalId(canais[0].id);
         }
         if (chatMode === 'dms' && dms.length > 0 && !activeDMId) {
