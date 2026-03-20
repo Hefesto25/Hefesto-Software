@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation';
 import {
     Send, Hash, Plus, Paperclip, X, Users, Trash2, Settings, Reply, Download, FileText,
     Image as ImageIcon, FolderKanban, Activity, LayoutDashboard, Clock, ChevronLeft,
-    Search, MessageSquare, Pin, Loader2
+    Search, MessageSquare, Pin, Loader2, Check
 } from 'lucide-react';
 import {
     useCanais, useCanalParticipantes, useMensagens, useUsuarios,
     createCanal, updateCanal, deleteCanal, addParticipante, removeParticipante,
-    sendMensagem, deleteMensagem, createMentionNotification, uploadChatFile,
+    sendMensagem, deleteMensagem, createMentionNotification, createDMNotification, uploadChatFile,
     useActiveTasksForMention, useDMs, useDMMensagens, getOrCreateDM, sendDMMensagem,
     deleteDMMensagem, uploadDMFile, useSearchMensagens, usePinnedMensagens, pinMensagem
 } from '@/lib/hooks';
@@ -94,6 +94,7 @@ export default function ChatPage() {
     const [taskMentionIdx, setTaskMentionIdx] = useState(0);
     const [selectedTaskModule, setSelectedTaskModule] = useState<ActiveTaskMention['module'] | null>(null);
     const [selectedTasks, setSelectedTasks] = useState<ActiveTaskMention[]>([]);
+    const [showingAddUserList, setShowingAddUserList] = useState(false);
 
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -192,23 +193,33 @@ export default function ChatPage() {
         return () => { supabase.removeChannel(channel); };
     }, [activeDMId, chatMode, setDMMensagens]);
 
-    // Presence
+    // Presence — heartbeat a cada 30s na tabela presenca (sem partições no schema realtime)
     useEffect(() => {
         if (!userId) return;
-        const presenceChannel = supabase.channel('online-users', { config: { presence: { key: userId } } });
-        presenceChannel
-            .on('presence', { event: 'sync' }, () => {
-                const state = presenceChannel.presenceState();
-                const ids = new Set<string>();
-                Object.keys(state).forEach(k => ids.add(k));
-                setOnlineUserIds(ids);
-            })
-            .subscribe(async (status) => {
-                if (status === 'SUBSCRIBED') {
-                    await presenceChannel.track({ user_id: userId, online_at: new Date().toISOString() });
-                }
-            });
-        return () => { presenceChannel.untrack(); supabase.removeChannel(presenceChannel); };
+        const upsert = () => supabase.from('presenca').upsert(
+            { usuario_id: userId, last_seen: new Date().toISOString() },
+            { onConflict: 'usuario_id' }
+        );
+        upsert();
+        const interval = setInterval(upsert, 30_000);
+        return () => clearInterval(interval);
+    }, [userId]);
+
+    // Presence — carrega usuários online e escuta mudanças em tempo real
+    useEffect(() => {
+        if (!userId) return;
+        const TWO_MINUTES = 2 * 60 * 1000;
+        const loadOnline = async () => {
+            const cutoff = new Date(Date.now() - TWO_MINUTES).toISOString();
+            const { data } = await supabase.from('presenca').select('usuario_id').gte('last_seen', cutoff);
+            if (data) setOnlineUserIds(new Set(data.map((r: { usuario_id: string }) => r.usuario_id)));
+        };
+        loadOnline();
+        const channel = supabase.channel('presenca-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'presenca' }, () => loadOnline())
+            .subscribe();
+        const syncInterval = setInterval(loadOnline, 60_000);
+        return () => { supabase.removeChannel(channel); clearInterval(syncInterval); };
     }, [userId]);
 
     // Keyboard shortcut: Cmd+K for search
@@ -256,9 +267,10 @@ export default function ChatPage() {
             setSelectedTaskModule(null);
         }
 
-        const singleAtMatch = textBeforeCursor.match(/(^|\s)@(\w*)$/);
+        const singleAtMatch = textBeforeCursor.match(/(^|\s)@([^@\n]*)$/);
         if (singleAtMatch) {
             setMentionQuery(singleAtMatch[2]);
+            setMentionIdx(0);
         } else {
             setMentionQuery(null);
         }
@@ -281,23 +293,102 @@ export default function ChatPage() {
         setSelectedTasks([]);
 
         if (chatMode === 'canais' && activeCanalId) {
-            await sendMensagem({
+            const resultMsg = await sendMensagem({
                 canal_id: activeCanalId,
                 autor_id: userId,
                 conteudo: text,
                 resposta_de: replyTo?.id || undefined,
                 mencoes_tarefas: finalMentionedTasks.length > 0 ? finalMentionedTasks : undefined,
             });
-        } else if (chatMode === 'dms' && activeDMId) {
-            await sendDMMensagem({
+
+            if (resultMsg.success && resultMsg.mensagem) {
+                // Improved mention detection for full names
+                const mentionRegex = /@([^@\n\s]+(?:\s+[^@\n\s]+)*)/g;
+                const uniqueMentions = new Set<string>();
+                let match;
+                while ((match = mentionRegex.exec(text)) !== null) {
+                    const fullName = match[1].trim();
+                    const matchingUser = allUsuarios.find(u => 
+                        u.nome.toLowerCase() === fullName.toLowerCase() && 
+                        participantes.some(p => p.usuario_id === u.id)
+                    );
+                    if (matchingUser && matchingUser.id !== userId) {
+                        uniqueMentions.add(matchingUser.id);
+                    }
+                }
+
+                Array.from(uniqueMentions).forEach(async (mId) => {
+                    await createMentionNotification({
+                        mencionado_id: mId,
+                        autor_nome: user.nome,
+                        canal_nome: activeCanal?.nome || 'canal',
+                        canal_id: activeCanalId,
+                        mensagem_id: resultMsg.mensagem.id,
+                        trecho: text.slice(0, 100)
+                    });
+                });
+            }
+        } else if (chatMode === 'dms' && activeDMId && activeDM) {
+            const resultMsg = await sendDMMensagem({
                 dm_id: activeDMId,
                 autor_id: userId,
                 conteudo: text,
             });
+
+            if (resultMsg.success && resultMsg.mensagem) {
+                const otherUserId = activeDM.usuario_a_id === userId ? activeDM.usuario_b_id : activeDM.usuario_a_id;
+                if (otherUserId) {
+                    await createDMNotification({
+                        destinatario_id: otherUserId,
+                        autor_nome: user.nome,
+                        dm_id: activeDMId,
+                        mensagem_id: resultMsg.mensagem.id,
+                        trecho: text
+                    });
+                }
+            }
         }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (mentionQuery !== null) {
+            const list = chatMode === 'canais' 
+                ? allUsuarios.filter(u => participantes.some(p => p.usuario_id === u.id) && u.nome.toLowerCase().includes(mentionQuery.toLowerCase()))
+                : (otherUser ? [otherUser].filter(u => u.nome.toLowerCase().includes(mentionQuery.toLowerCase())) : []);
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setMentionIdx(prev => (prev + 1) % (list.length || 1));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMentionIdx(prev => (prev - 1 + list.length) % (list.length || 1));
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (list[mentionIdx]) {
+                    const u = list[mentionIdx];
+                    const cursorPos = inputRef.current?.selectionStart || 0;
+                    const textBefore = messageText.slice(0, cursorPos);
+                    const textAfter = messageText.slice(cursorPos);
+                    const lastAtIdx = textBefore.lastIndexOf('@');
+                    const newText = textBefore.slice(0, lastAtIdx) + '@' + u.nome + ' ' + textAfter;
+                    setMessageText(newText);
+                    setMentionQuery(null);
+                    setTimeout(() => {
+                        if (inputRef.current) {
+                            const newPos = lastAtIdx + u.nome.length + 2;
+                            inputRef.current.selectionStart = newPos;
+                            inputRef.current.selectionEnd = newPos;
+                            inputRef.current.focus();
+                        }
+                    }, 0);
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setMentionQuery(null);
+            }
+            return;
+        }
+
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
@@ -327,7 +418,7 @@ export default function ChatPage() {
             const result = await uploadDMFile(file, activeDMId);
             if (!result.success) { alert('Erro ao enviar arquivo: ' + result.error); return; }
             const tipo = file.type.startsWith('image/') ? 'imagem' : 'arquivo';
-            await sendDMMensagem({
+            const resultMsg = await sendDMMensagem({
                 dm_id: activeDMId,
                 autor_id: userId,
                 conteudo: tipo === 'imagem' ? undefined : file.name,
@@ -336,8 +427,66 @@ export default function ChatPage() {
                 arquivo_nome: result.nome,
                 arquivo_tamanho: result.tamanho,
             });
+
+            if (resultMsg.success && resultMsg.mensagem && activeDM) {
+                const otherUserId = activeDM.usuario_a_id === userId ? activeDM.usuario_b_id : activeDM.usuario_a_id;
+                if (otherUserId) {
+                    await createDMNotification({
+                        destinatario_id: otherUserId,
+                        autor_nome: user?.nome || 'Alguém',
+                        dm_id: activeDMId,
+                        mensagem_id: resultMsg.mensagem.id,
+                        trecho: tipo === 'imagem' ? 'Enviou uma imagem' : `Enviou um arquivo: ${file.name}`
+                    });
+                }
+            }
         }
         e.target.value = '';
+    };
+
+    const renderMessageContent = (content: string) => {
+        if (!content) return null;
+        
+        const mentionRegex = /@([^@\n\s]+(?:\s+[^@\n\s]+)*)/g;
+        const parts: React.ReactNode[] = [];
+        let lastIdx = 0;
+        let match;
+
+        while ((match = mentionRegex.exec(content)) !== null) {
+            const fullMatch = match[0];
+            const name = match[1].trim();
+            
+            // Validate if this name belongs to a participant
+            const isParticipant = allUsuarios.some(u => 
+                u.nome.toLowerCase() === name.toLowerCase() && 
+                participantes.some(p => p.usuario_id === u.id)
+            );
+
+            if (isParticipant) {
+                if (match.index > lastIdx) {
+                    parts.push(content.slice(lastIdx, match.index));
+                }
+                parts.push(
+                    <span key={match.index} style={{ 
+                        color: 'var(--accent)', 
+                        background: 'var(--accent-muted)', 
+                        padding: '1px 4px', 
+                        borderRadius: 4, 
+                        fontWeight: 600,
+                        cursor: 'default'
+                    }}>
+                        {fullMatch}
+                    </span>
+                );
+                lastIdx = mentionRegex.lastIndex;
+            }
+        }
+
+        if (lastIdx < content.length) {
+            parts.push(content.slice(lastIdx));
+        }
+
+        return parts.length > 0 ? parts : content;
     };
 
     // Render messages
@@ -398,7 +547,7 @@ export default function ChatPage() {
                                 </a>
                             </div>
                         ) : (
-                            <div className="chat-message-text">{msg.conteudo || ''}</div>
+                            <div className="chat-message-text">{renderMessageContent(msg.conteudo || '')}</div>
                         )}
 
                         {!msg.deletada && (
@@ -573,6 +722,59 @@ export default function ChatPage() {
                             </select>
                         </div>
 
+                        <div style={{ marginBottom: 20 }}>
+                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>Selecionar Membros</label>
+                            <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--bg-secondary)', padding: '4px' }}>
+                                {allUsuarios.filter(u => u.id !== userId).map(u => {
+                                    const isSelected = formParticipantes.includes(u.id);
+                                    return (
+                                        <div
+                                            key={u.id}
+                                            onClick={() => {
+                                                setFormParticipantes(prev =>
+                                                    prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id]
+                                                );
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 12,
+                                                padding: '8px 12px',
+                                                borderRadius: 6,
+                                                cursor: 'pointer',
+                                                background: isSelected ? 'rgba(var(--accent-rgb), 0.1)' : 'transparent',
+                                                transition: 'all 0.2s ease'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: 32,
+                                                height: 32,
+                                                borderRadius: '50%',
+                                                background: getColor(u.nome),
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: 12,
+                                                fontWeight: 600,
+                                                color: '#fff',
+                                                flexShrink: 0
+                                            }}>
+                                                {getInitials(u.nome)}
+                                            </div>
+                                            <span style={{ fontSize: 13, flex: 1, color: isSelected ? 'var(--accent)' : 'var(--text-primary)', fontWeight: isSelected ? 600 : 400 }}>
+                                                {u.nome}
+                                            </span>
+                                            {isSelected && (
+                                                <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Check size={12} style={{ color: '#000' }} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
                             <button
                                 onClick={() => setModal(null)}
@@ -683,35 +885,91 @@ export default function ChatPage() {
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setModal(null)}>
                     <div style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, maxWidth: 440, width: '90%', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Membros — #{activeCanal.nome}</h2>
-                            <button onClick={() => setModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={18} /></button>
+                            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                                {showingAddUserList ? 'Adicionar Membros' : `Membros — #${activeCanal.nome}`}
+                            </h2>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {!showingAddUserList && (
+                                    <button 
+                                        onClick={() => setShowingAddUserList(true)}
+                                        style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: '#000' }}
+                                    >
+                                        <Plus size={12} /> Adicionar
+                                    </button>
+                                )}
+                                <button onClick={() => { setModal(null); setShowingAddUserList(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}><X size={18} /></button>
+                            </div>
                         </div>
 
-                        <div style={{ overflowY: 'auto', flex: 1 }}>
-                            {participantes.length === 0 ? (
-                                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 24 }}>Nenhum membro ainda.</div>
-                            ) : (
-                                participantes.map(p => {
-                                    const u = allUsuarios.find(u => u.id === p.usuario_id);
-                                    if (!u) return null;
-                                    const isCreator = activeCanal.criador_id === u.id;
-                                    return (
-                                        <div key={p.usuario_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border-default)' }}>
-                                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: getColor(u.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                                                {getInitials(u.nome)}
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    {u.nome}
-                                                    {isCreator && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#000', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>Admin</span>}
+                        {showingAddUserList ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                                <div style={{ overflowY: 'auto', flex: 1, marginBottom: 16 }}>
+                                    {allUsuarios
+                                        .filter(u => !participantes.some(p => p.usuario_id === u.id))
+                                        .map(usuario => (
+                                            <div 
+                                                key={usuario.id}
+                                                onClick={async () => {
+                                                    const result = await addParticipante(activeCanal.id, usuario.id);
+                                                    if (result.success) {
+                                                        refetchParticipantes();
+                                                    } else {
+                                                        alert('Erro ao adicionar: ' + result.error);
+                                                    }
+                                                }}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--border-default)', cursor: 'pointer', borderRadius: 8, transition: 'background 0.2s' }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                            >
+                                                <div style={{ width: 28, height: 28, borderRadius: '50%', background: getColor(usuario.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                                                    {getInitials(usuario.nome)}
                                                 </div>
-                                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{u.email}</div>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{usuario.nome}</div>
+                                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{usuario.email}</div>
+                                                </div>
+                                                <Plus size={14} color="var(--text-muted)" />
                                             </div>
-                                        </div>
-                                    );
-                                })
-                            )}
-                        </div>
+                                        ))
+                                    }
+                                    {allUsuarios.filter(u => !participantes.some(p => p.usuario_id === u.id)).length === 0 && (
+                                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 32 }}>Todos os usuários já estão no canal.</div>
+                                    )}
+                                </div>
+                                <button 
+                                    onClick={() => setShowingAddUserList(false)}
+                                    style={{ width: '100%', padding: '10px', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}
+                                >
+                                    Voltar para lista
+                                </button>
+                            </div>
+                        ) : (
+                            <div style={{ overflowY: 'auto', flex: 1 }}>
+                                {participantes.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 24 }}>Nenhum membro ainda.</div>
+                                ) : (
+                                    participantes.map(p => {
+                                        const u = allUsuarios.find(u => u.id === p.usuario_id);
+                                        if (!u) return null;
+                                        const isCreator = activeCanal.criador_id === u.id;
+                                        return (
+                                            <div key={p.usuario_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border-default)' }}>
+                                                <div style={{ width: 32, height: 32, borderRadius: '50%', background: getColor(u.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                                                    {getInitials(u.nome)}
+                                                </div>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                        {u.nome}
+                                                        {isCreator && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#000', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>Admin</span>}
+                                                    </div>
+                                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{u.email}</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -1050,6 +1308,76 @@ export default function ChatPage() {
                             </div>
                         )}
 
+                        {/* Mentions Dropdown */}
+                        {mentionQuery !== null && (
+                            <div style={{ position: 'relative', width: '100%', padding: '0 24px' }}>
+                                <div style={{ 
+                                    position: 'absolute', 
+                                    bottom: '100%', 
+                                    left: 24, 
+                                    width: 'calc(100% - 48px)', 
+                                    maxHeight: 200, 
+                                    overflowY: 'auto', 
+                                    background: 'var(--bg-primary)', 
+                                    border: '1px solid var(--border-default)', 
+                                    borderRadius: 12, 
+                                    boxShadow: '0 4px 20px rgba(0,0,0,0.2)', 
+                                    zIndex: 50,
+                                    marginBottom: 8
+                                }}>
+                                    <div style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)', textTransform: 'uppercase' }}>
+                                        Mencionar membros
+                                    </div>
+                                    {allUsuarios
+                                        .filter(u => 
+                                            participantes.some(p => p.usuario_id === u.id) &&
+                                            u.nome.toLowerCase().includes(mentionQuery.toLowerCase())
+                                        )
+                                        .map((u, idx) => (
+                                            <div
+                                                key={u.id}
+                                                onClick={() => {
+                                                    const cursorPos = inputRef.current?.selectionStart || 0;
+                                                    const textBefore = messageText.slice(0, cursorPos);
+                                                    const textAfter = messageText.slice(cursorPos);
+                                                    const lastAtIdx = textBefore.lastIndexOf('@');
+                                                    const newText = textBefore.slice(0, lastAtIdx) + '@' + u.nome + ' ' + textAfter;
+                                                    setMessageText(newText);
+                                                    setMentionQuery(null);
+                                                    setTimeout(() => {
+                                                        if (inputRef.current) {
+                                                            const newPos = lastAtIdx + u.nome.length + 2;
+                                                            inputRef.current.selectionStart = newPos;
+                                                            inputRef.current.selectionEnd = newPos;
+                                                            inputRef.current.focus();
+                                                        }
+                                                    }, 0);
+                                                }}
+                                                style={{ 
+                                                    padding: '10px 16px', 
+                                                    cursor: 'pointer', 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: 10,
+                                                    background: mentionIdx === idx ? 'var(--bg-secondary)' : 'transparent',
+                                                    transition: 'background 0.2s'
+                                                }}
+                                                onMouseEnter={() => setMentionIdx(idx)}
+                                            >
+                                                <div style={{ width: 24, height: 24, borderRadius: '50%', background: getColor(u.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>
+                                                    {getInitials(u.nome)}
+                                                </div>
+                                                <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{u.nome}</div>
+                                            </div>
+                                        ))
+                                    }
+                                    {allUsuarios.filter(u => participantes.some(p => p.usuario_id === u.id) && u.nome.toLowerCase().includes(mentionQuery.toLowerCase())).length === 0 && (
+                                        <div style={{ padding: '16px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>Nenhum membro encontrado.</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="chat-input-container">
                             <div className="chat-input">
                                 <button onClick={() => fileInputRef.current?.click()} className="chat-icon-btn" aria-label="Anexar arquivo" title="Anexar arquivo">
@@ -1098,6 +1426,73 @@ export default function ChatPage() {
                             )}
                             <div ref={messagesEndRef} />
                         </div>
+
+                        {/* Mentions Dropdown for DMs */}
+                        {mentionQuery !== null && otherUser && (
+                            <div style={{ position: 'relative', width: '100%', padding: '0 24px' }}>
+                                <div style={{ 
+                                    position: 'absolute', 
+                                    bottom: '100%', 
+                                    left: 24, 
+                                    width: 'calc(100% - 48px)', 
+                                    maxHeight: 200, 
+                                    overflowY: 'auto', 
+                                    background: 'var(--bg-primary)', 
+                                    border: '1px solid var(--border-default)', 
+                                    borderRadius: 12, 
+                                    boxShadow: '0 4px 20px rgba(0,0,0,0.2)', 
+                                    zIndex: 50,
+                                    marginBottom: 8
+                                }}>
+                                    <div style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)', textTransform: 'uppercase' }}>
+                                        Mencionar
+                                    </div>
+                                    {[otherUser]
+                                        .filter(u => u.nome.toLowerCase().includes(mentionQuery.toLowerCase()))
+                                        .map((u, idx) => (
+                                            <div
+                                                key={u.id}
+                                                onClick={() => {
+                                                    const cursorPos = inputRef.current?.selectionStart || 0;
+                                                    const textBefore = messageText.slice(0, cursorPos);
+                                                    const textAfter = messageText.slice(cursorPos);
+                                                    const lastAtIdx = textBefore.lastIndexOf('@');
+                                                    const newText = textBefore.slice(0, lastAtIdx) + '@' + u.nome + ' ' + textAfter;
+                                                    setMessageText(newText);
+                                                    setMentionQuery(null);
+                                                    setTimeout(() => {
+                                                        if (inputRef.current) {
+                                                            const newPos = lastAtIdx + u.nome.length + 2;
+                                                            inputRef.current.selectionStart = newPos;
+                                                            inputRef.current.selectionEnd = newPos;
+                                                            inputRef.current.focus();
+                                                        }
+                                                    }, 0);
+                                                }}
+                                                style={{ 
+                                                    padding: '10px 16px', 
+                                                    cursor: 'pointer', 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: 10,
+                                                    background: mentionIdx === idx ? 'var(--bg-secondary)' : 'transparent',
+                                                    transition: 'background 0.2s'
+                                                }}
+                                                onMouseEnter={() => setMentionIdx(idx)}
+                                            >
+                                                <div style={{ width: 24, height: 24, borderRadius: '50%', background: getColor(u.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>
+                                                    {getInitials(u.nome)}
+                                                </div>
+                                                <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{u.nome}</div>
+                                            </div>
+                                        ))
+                                    }
+                                    {[otherUser].filter(u => u.nome.toLowerCase().includes(mentionQuery.toLowerCase())).length === 0 && (
+                                        <div style={{ padding: '16px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>Nenhum usuário encontrado.</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="chat-input-container">
                             <div className="chat-input">

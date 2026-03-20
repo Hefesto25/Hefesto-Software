@@ -1682,7 +1682,7 @@ export default function FinanceiroPage() {
                                 const av2 = v2 !== undefined ? calcAV(v2, data2?.receitaBruta || 0) : 0;
 
                                 return (
-                                    <tr className={isTotal ? 'dre-total' : isSub ? 'dre-subcategory' : 'dre-category'}
+                                    <tr key={label} className={isTotal ? 'dre-total' : isSub ? 'dre-subcategory' : 'dre-category'}
                                         style={isTotal ? { fontWeight: 700, borderTop: isSub ? 'none' : '1px solid var(--border-default)' } : {}}>
                                         <td style={{ paddingLeft: isSub ? 32 : 16 }}>{isTotal ? <strong>{label}</strong> : label}</td>
                                         <td style={{ textAlign: 'right' }} className={getValClass(v1)}>{isTotal ? <strong>{formatValue(v1)}</strong> : formatValue(v1)}</td>
@@ -1769,25 +1769,25 @@ export default function FinanceiroPage() {
                                                 {renderDRERow('RECEITA OPERACIONAL BRUTA', data1.receitaBruta, data2?.receitaBruta, true)}
                                                 {renderDRERow('Receita de Serviços / Vendas', data1.receitaBruta, data2?.receitaBruta, false, true)}
 
-                                                <tr style={{ height: 16 }}></tr>
+                                                <tr key="spacer-receita-deducoes" style={{ height: 16 }}></tr>
                                                 {renderDRERow('(–) DEDUÇÕES E IMPOSTOS', -data1.deducoes, data2 ? -data2.deducoes : undefined)}
                                                 {renderDRERow('Impostos sobre receita', -data1.deducoes, data2 ? -data2.deducoes : undefined, false, true)}
 
-                                                <tr style={{ height: 16 }}></tr>
+                                                <tr key="spacer-deducoes-liquida" style={{ height: 16 }}></tr>
                                                 {renderDRERow('(=) RECEITA OPERACIONAL LÍQUIDA', data1.receitaLiquida, data2?.receitaLiquida, true)}
 
-                                                <tr style={{ height: 16 }}></tr>
+                                                <tr key="spacer-liquida-custos" style={{ height: 16 }}></tr>
                                                 {/* Custos Operacionais */}
                                                 {renderDRERow('(–) CUSTOS OPERACIONAIS', -data1.totalCustos, data2 ? -data2.totalCustos : undefined)}
                                                 {renderDRERow('Custos Fixos', -data1.custosFixos, data2 ? -data2.custosFixos : undefined, false, true)}
                                                 {renderDRERow('Custos Variáveis', -data1.custosVariaveis, data2 ? -data2.custosVariaveis : undefined, false, true)}
 
-                                                <tr style={{ height: 16 }}></tr>
+                                                <tr key="spacer-custos-margem" style={{ height: 16 }}></tr>
                                                 {renderDRERow('(=) MARGEM DE CONTRIBUIÇÃO', data1.margemContribuicao, data2?.margemContribuicao, true)}
 
-                                                <tr style={{ height: 16 }}></tr>
+                                                <tr key="spacer-margem-despesas" style={{ height: 16 }}></tr>
                                                 {/* Despesas Operacionais */}
-                                                <tr className="dre-category"><td>(–) DESPESAS OPERACIONAIS</td><td style={{ textAlign: 'right' }} className="negative">{formatValue(-data1.totalDespesas)}</td><td style={{ textAlign: 'right', fontSize: 12 }}>{formatAV(calcAV(-data1.totalDespesas, data1.receitaBruta))}</td>{dreIsComparative && <><td style={{ textAlign: 'right' }} className="negative">{formatValue(-(data2?.totalDespesas || 0))}</td><td></td><td></td><td></td></>}</tr>
+                                                <tr key="row-despesas-operacionais" className="dre-category"><td>(–) DESPESAS OPERACIONAIS</td><td style={{ textAlign: 'right' }} className="negative">{formatValue(-data1.totalDespesas)}</td><td style={{ textAlign: 'right', fontSize: 12 }}>{formatAV(calcAV(-data1.totalDespesas, data1.receitaBruta))}</td>{dreIsComparative && <><td style={{ textAlign: 'right' }} className="negative">{formatValue(-(data2?.totalDespesas || 0))}</td><td></td><td></td><td></td></>}</tr>
 
                                                 {/* Predefined Categories first, then others with remaining balance */}
                                                 {['Pessoal', 'Marketing', 'Administrativo', 'Operacional', 'Comercial', 'Comissão', 'Ferramenta'].map(cat => {
@@ -1806,8 +1806,8 @@ export default function FinanceiroPage() {
                                                     return null;
                                                 })()}
 
-                                                <tr style={{ height: 32 }}></tr>
-                                                <tr className="dre-total" style={{ borderTop: '3px solid var(--accent)', background: 'rgba(255,255,255,0.02)' }}>
+                                                <tr key="spacer-despesas-ebit" style={{ height: 32 }}></tr>
+                                                <tr key="row-ebit" className="dre-total" style={{ borderTop: '3px solid var(--accent)', background: 'rgba(255,255,255,0.02)' }}>
                                                     <td><strong style={{ color: 'var(--accent-light)', fontSize: 15 }}>(=) RESULTADO OPERACIONAL (EBIT)</strong></td>
                                                     <td style={{ textAlign: 'right', fontSize: 16 }} className={getValClass(data1.ebit)}><strong>{formatValue(data1.ebit)}</strong></td>
                                                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatAV(calcAV(data1.ebit, data1.receitaBruta))}</td>

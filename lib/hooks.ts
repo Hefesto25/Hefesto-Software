@@ -687,6 +687,24 @@ export async function sendDMMensagem(payload: {
     return { success: true, mensagem: data as DMMensagem };
 }
 
+export async function createDMNotification(payload: {
+    destinatario_id: string;
+    autor_nome: string;
+    dm_id: string;
+    mensagem_id: string;
+    trecho: string;
+}) {
+    const { error } = await supabase.from('notificacoes').insert({
+        usuario_id: payload.destinatario_id,
+        tipo: 'mencao_chat', // Use mention type or create a new one 'chat_dm' if supported
+        titulo: `Nova mensagem de ${payload.autor_nome}`,
+        mensagem: `"${payload.trecho.slice(0, 100)}"`,
+        redirecionamento: `/chat?dm=${payload.dm_id}&msg=${payload.mensagem_id}`,
+        modulo_origem: 'chat',
+    });
+    return { success: !error, error: error?.message };
+}
+
 export async function deleteDMMensagem(id: string) {
     // 1. Fetch to see if it has a file
     const { data: msg } = await supabase
