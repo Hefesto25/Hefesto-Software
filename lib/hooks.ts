@@ -1606,7 +1606,7 @@ export function useDiretorioContatos(clienteId: string | null) {
     const [loading, setLoading] = useState(true);
     useEffect(() => {
         if (!clienteId) { setData([]); setLoading(false); return; }
-        supabase.from('diretorio_contatos').select('*').eq('cliente_id', clienteId).order('nome').then(({ data }) => {
+        supabase.from('diretorio_contatos').select('*').eq('cliente_id', clienteId).order('nome').then(({ data }: any) => {
             setData(data || []); setLoading(false);
         });
     }, [clienteId]);
@@ -1633,7 +1633,7 @@ export function useDiretorioLogins(clienteId: string | null) {
         if (!clienteId) { setData([]); setLoading(false); return; }
         // We do NOT select senha_criptografada to avoid exposing it unnecessarily on initial load, but for simplicity we select all here
         // The password remains hashed
-        supabase.from('diretorio_logins').select('*').eq('cliente_id', clienteId).order('plataforma').then(({ data }) => {
+        supabase.from('diretorio_logins').select('*').eq('cliente_id', clienteId).order('plataforma').then(({ data }: any) => {
             setData(data || []); setLoading(false);
         });
     }, [clienteId]);
@@ -1666,7 +1666,7 @@ export function useDiretorioAssinaturas(clienteId: string | null) {
     const [loading, setLoading] = useState(true);
     useEffect(() => {
         if (!clienteId) { setData([]); setLoading(false); return; }
-        supabase.from('diretorio_assinaturas').select('*').eq('cliente_id', clienteId).order('data_vencimento').then(({ data }) => {
+        supabase.from('diretorio_assinaturas').select('*').eq('cliente_id', clienteId).order('data_vencimento').then(({ data }: any) => {
             setData(data || []); setLoading(false);
         });
     }, [clienteId]);
@@ -1677,7 +1677,7 @@ export function useAllDiretorioAssinaturas() {
     const [data, setData] = useState<DiretorioAssinatura[]>([]);
     const [loading, setLoading] = useState(true);
     useEffect(() => {
-        supabase.from('diretorio_assinaturas').select('*').order('data_vencimento').then(({ data }) => {
+        supabase.from('diretorio_assinaturas').select('*').order('data_vencimento').then(({ data }: any) => {
             setData(data || []); setLoading(false);
         });
     }, []);
@@ -1714,7 +1714,7 @@ export function useDiretorioCustos(clienteId: string | null) {
     const [loading, setLoading] = useState(true);
     useEffect(() => {
         if (!clienteId) { setData([]); setLoading(false); return; }
-        supabase.from('diretorio_custos').select('*').eq('cliente_id', clienteId).order('mes_ano', { ascending: false }).then(({ data }) => {
+        supabase.from('diretorio_custos').select('*').eq('cliente_id', clienteId).order('mes_ano', { ascending: false }).then(({ data }: any) => {
             setData(data || []); setLoading(false);
         });
     }, [clienteId]);
@@ -1760,7 +1760,7 @@ export function useDiretorioColabPlataformas(colaboradorId: string | null) {
     const [loading, setLoading] = useState(true);
     useEffect(() => {
         if (!colaboradorId) { setData([]); setLoading(false); return; }
-        supabase.from('diretorio_colab_plataformas').select('*').eq('colaborador_id', colaboradorId).order('plataforma').then(({ data }) => {
+        supabase.from('diretorio_colab_plataformas').select('*').eq('colaborador_id', colaboradorId).order('plataforma').then(({ data }: any) => {
             setData(data || []); setLoading(false);
         });
     }, [colaboradorId]);
@@ -1785,7 +1785,7 @@ export function useDiretorioColabDocumentos(colaboradorId: string | null) {
     const [loading, setLoading] = useState(true);
     useEffect(() => {
         if (!colaboradorId) { setData([]); setLoading(false); return; }
-        supabase.from('diretorio_colab_documentos').select('*').eq('colaborador_id', colaboradorId).order('created_at', { ascending: false }).then(({ data }) => {
+        supabase.from('diretorio_colab_documentos').select('*').eq('colaborador_id', colaboradorId).order('created_at', { ascending: false }).then(({ data }: any) => {
             setData(data || []); setLoading(false);
         });
     }, [colaboradorId]);
@@ -1981,7 +1981,7 @@ export function useSearchMensagens(query: string, userId: string | undefined) {
             .eq('deletada', false)
             .order('created_at', { ascending: false })
             .limit(50)
-            .then(({ data, error }) => {
+            .then(({ data, error }: any) => {
                 if (!error && data) {
                     setResults((data as Mensagem[]) || []);
                 }
@@ -2011,7 +2011,7 @@ export function usePinnedMensagens(canalId: string | null) {
             .eq('pinada', true)
             .eq('deletada', false)
             .order('created_at', { ascending: false })
-            .then(({ data: result, error }) => {
+            .then(({ data: result, error }: any) => {
                 if (!error && result) {
                     setData((result as Mensagem[]) || []);
                 }

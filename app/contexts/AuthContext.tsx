@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let mounted = true;
 
         // Get initial session
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(({ data: { session } }: any) => {
             if (!mounted) return;
             setSession(session);
             if (session?.user) {
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         // Listen to auth state changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
             if (!mounted) return;
             setSession(session);
             if (session?.user) {
