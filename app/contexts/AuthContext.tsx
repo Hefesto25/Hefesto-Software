@@ -69,19 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 .maybeSingle();
 
             if (error || !data) {
-                // If no profile found, create a minimal one from auth user
-                const { data: authUser } = await supabase.auth.getUser();
-                if (authUser?.user) {
-                    const fallback: UsuarioPerfil = {
-                        id: authUser.user.id,
-                        nome: authUser.user.email?.split('@')[0] || 'Usuário',
-                        email: authUser.user.email || '',
-                        categoria: 'Admin Geral',
-                        modulos_acesso: DEFAULT_MODULES_BY_CATEGORY['Admin Geral'],
-                        initials: getInitials(authUser.user.email?.split('@')[0] || 'U'),
-                    };
-                    setUser(fallback);
-                }
+                // If no profile found, sign out to prevent unauthorized access
+                console.error('User profile not found for ID:', userId, error);
+                await supabase.auth.signOut();
                 return;
             }
 

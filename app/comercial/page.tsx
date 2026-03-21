@@ -69,8 +69,8 @@ export function getDaysInStage(dateStr?: string) {
 
 export default function ComercialPage() {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'painel' | 'negocios' | 'funil' | 'time' | 'crm' | 'comissao' | 'tarefas' | 'perdidos'>('painel');
-    const [subTabNegocios, setSubTabNegocios] = useState<'kanban' | 'lista' | 'historico'>('kanban');
+    const [activeTab, setActiveTab] = useState<'painel' | 'negocios' | 'time' | 'crm' | 'tarefas'>('painel');
+    const [subTabNegocios, setSubTabNegocios] = useState<'kanban' | 'lista' | 'historico' | 'funil' | 'perdidos'>('kanban');
 
     const currentDate = getBahiaDate();
     const [filterMonth, setFilterMonth] = useState(String(currentDate.getMonth() + 1).padStart(2, '0'));
@@ -194,7 +194,8 @@ export default function ComercialPage() {
                     setActiveTab('negocios');
                 }
             } else if (tab === 'perdidos') {
-                setActiveTab('perdidos');
+                setActiveTab('negocios');
+                setSubTabNegocios('perdidos');
             }
             // Clear the URL to prevent re-opening on manual refresh
             if (taskId || tab) {
@@ -817,12 +818,6 @@ export default function ComercialPage() {
                     Negócios
                 </button>
                 <button
-                    className={`finance-tab ${activeTab === 'funil' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('funil')}
-                >
-                    Funil
-                </button>
-                <button
                     className={`finance-tab ${activeTab === 'time' ? 'active' : ''}`}
                     onClick={() => setActiveTab('time')}
                 >
@@ -835,22 +830,10 @@ export default function ComercialPage() {
                     CRM
                 </button>
                 <button
-                    className={`finance-tab ${activeTab === 'comissao' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('comissao')}
-                >
-                    Comissões
-                </button>
-                <button
                     className={`finance-tab ${activeTab === 'tarefas' ? 'active' : ''}`}
                     onClick={() => setActiveTab('tarefas')}
                 >
                     Tarefas
-                </button>
-                <button
-                    className={`finance-tab ${activeTab === 'perdidos' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('perdidos')}
-                >
-                    Leads Perdidos{deals.filter(d => d.stage === 'perdido').length > 0 && ` (${deals.filter(d => d.stage === 'perdido').length})`}
                 </button>
             </div>
 
@@ -978,208 +961,6 @@ export default function ComercialPage() {
                 </>
             )}
 
-            {/* TAB FUNIL */}
-            {activeTab === 'funil' && (() => {
-                const totalAtivos = funnelData.reduce((s, d) => s + d.count, 0);
-                const totalPerdidos = filteredDeals.filter(d => d.stage === 'perdido').length;
-                const totalFechados = filteredDeals.filter(d => d.stage === 'fechado').length;
-                const taxaGeral = (totalAtivos + totalFechados) > 0
-                    ? Math.round((totalFechados / (totalAtivos + totalFechados + totalPerdidos)) * 100)
-                    : 0;
-                const valorPipeline = abertos.reduce((s, d) => s + d.value, 0);
-                const maxCount = Math.max(...funnelData.map(s => s.count), 1);
-
-                return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-
-                        {/* Filter header */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', alignSelf: 'flex-start' }}>
-                            <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-                            <select className="form-select" style={{ minWidth: 120, fontSize: 13, background: 'transparent', border: 'none' }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
-                                {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </select>
-                            <select className="form-select" style={{ minWidth: 90, fontSize: 13, background: 'transparent', border: 'none' }} value={filterYear} onChange={e => setFilterYear(e.target.value)}>
-                                {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
-                            </select>
-                        </div>
-
-                        {/* KPI summary row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-                            {[
-                                { label: 'Leads Ativos', value: String(totalAtivos), color: '#3B82F6', icon: <Activity size={18} /> },
-                                { label: 'Fechados', value: String(totalFechados), color: '#10B981', icon: <Handshake size={18} /> },
-                                { label: 'Perdidos', value: String(totalPerdidos), color: '#EF4444', icon: <Ban size={18} /> },
-                                { label: 'Valor no Pipeline', value: formatCurrency(valorPipeline), color: '#8B5CF6', icon: <DollarSign size={18} /> },
-                            ].map(kpi => (
-                                <div key={kpi.label} className="kpi-card" style={{ borderBottom: `3px solid ${kpi.color}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                        <div className="kpi-card-value" style={{ color: kpi.color, fontSize: 22 }}>{kpi.value}</div>
-                                        <span style={{ color: kpi.color, opacity: 0.5 }}>{kpi.icon}</span>
-                                    </div>
-                                    <div className="kpi-card-label">{kpi.label}</div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Main funnel */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20 }}>
-
-                            {/* Funnel visualization */}
-                            <div className="chart-card" style={{ padding: '24px 32px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                                    <div>
-                                        <div className="chart-title" style={{ marginBottom: 4 }}>Funil de Conversão</div>
-                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                            {MONTHS.find(m => m.value === filterMonth)?.label} {filterYear}
-                                        </div>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: 24, fontWeight: 700, color: '#10B981' }}>{taxaGeral}%</div>
-                                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>conversão geral</div>
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                    {funnelData.map((stage, idx) => {
-                                        const widthPct = Math.max((stage.count / maxCount) * 100, 6);
-                                        const isBottleneck = stage.conversionRate !== null && stage.conversionRate < 30;
-                                        return (
-                                            <div key={stage.name}>
-                                                {/* Conversion rate connector */}
-                                                {idx > 0 && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '6px 0' }}>
-                                                        <ArrowDown size={14} style={{ color: stage.conversionRate !== null && stage.conversionRate < 30 ? '#EF4444' : stage.conversionRate !== null && stage.conversionRate < 60 ? '#F59E0B' : '#6B7280' }} />
-                                                        {stage.conversionRate !== null ? (
-                                                            <span style={{
-                                                                fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
-                                                                color: isBottleneck ? '#EF4444' : stage.conversionRate < 60 ? '#F59E0B' : '#10B981',
-                                                                background: isBottleneck ? 'rgba(239,68,68,0.1)' : stage.conversionRate < 60 ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
-                                                                padding: '2px 8px', borderRadius: 20,
-                                                            }}>
-                                                                {stage.conversionRate}% conversão
-                                                                {isBottleneck ? ' ⚠' : ''}
-                                                            </span>
-                                                        ) : null}
-                                                    </div>
-                                                )}
-                                                {/* Stage bar */}
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                                                    <div style={{ width: 88, textAlign: 'right', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flexShrink: 0, letterSpacing: '0.01em' }}>
-                                                        {stage.name}
-                                                    </div>
-                                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                        <div style={{
-                                                            width: `${widthPct}%`, height: 36,
-                                                            background: `linear-gradient(90deg, ${stage.fill}CC, ${stage.fill})`,
-                                                            borderRadius: '0 8px 8px 0',
-                                                            display: 'flex', alignItems: 'center', paddingLeft: 12,
-                                                            transition: 'width 0.4s ease',
-                                                            boxShadow: `0 0 12px ${stage.fill}33`,
-                                                            minWidth: 44,
-                                                        }}>
-                                                            <span style={{ fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>
-                                                                {stage.count}
-                                                            </span>
-                                                        </div>
-                                                        {stage.count > 0 && (
-                                                            <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
-                                                                {Math.round((stage.count / (totalAtivos + totalFechados || 1)) * 100)}%
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Lost deals footer */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#EF4444', flexShrink: 0, display: 'inline-block' }} />
-                                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                        Leads saídos como Perdidos este período:
-                                    </span>
-                                    <span style={{ fontSize: 13, fontWeight: 700, color: '#EF4444' }}>
-                                        {totalPerdidos}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Stage breakdown table */}
-                            <div className="chart-card" style={{ padding: '24px 20px' }}>
-                                <div className="chart-title" style={{ marginBottom: 20 }}>Por Etapa</div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                    {[...funnelData,
-                                        { name: 'Perdido', count: totalPerdidos, fill: '#EF4444', conversionRate: null }
-                                    ].map(stage => (
-                                        <div key={stage.name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.fill, flexShrink: 0, display: 'inline-block' }} />
-                                            <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{stage.name}</span>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontSize: 16, fontWeight: 700, color: stage.fill }}>{stage.count}</div>
-                                                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>leads</div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    <div style={{ marginTop: 8, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>Total no período</span>
-                                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {totalAtivos + totalFechados + totalPerdidos}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Per-seller breakdown */}
-                        {teamStats.length > 0 && (
-                            <div className="table-card">
-                                <div className="table-card-title">Conversão por Vendedor</div>
-                                <div style={{ overflowX: 'auto' }}>
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Vendedor</th>
-                                                <th>Leads</th>
-                                                <th>Fechados</th>
-                                                <th>Taxa Conversão</th>
-                                                <th>Receita</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {teamStats.map(s => (
-                                                <tr key={s.name}>
-                                                    <td>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#000', flexShrink: 0 }}>
-                                                                {s.name.charAt(0)}
-                                                            </div>
-                                                            <span style={{ fontWeight: 500 }}>{s.name}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td style={{ color: 'var(--text-muted)' }}>{s.leads}</td>
-                                                    <td style={{ color: '#10B981', fontWeight: 600 }}>{s.wins}</td>
-                                                    <td>
-                                                        <span style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                            padding: '2px 8px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                                                            background: s.convRate >= 50 ? 'rgba(16,185,129,0.12)' : s.convRate >= 20 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
-                                                            color: s.convRate >= 50 ? '#10B981' : s.convRate >= 20 ? '#F59E0B' : '#EF4444',
-                                                        }}>
-                                                            {s.convRate.toFixed(1)}%
-                                                        </span>
-                                                    </td>
-                                                    <td style={{ fontWeight: 600 }}>{formatCurrency(s.value)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            })()}
 
             {/* TAB NEGOCIOS */}
             {activeTab === 'negocios' && (() => {
@@ -1292,6 +1073,26 @@ export default function ComercialPage() {
                                         }}
                                     >
                                         Histórico
+                                    </button>
+                                    <button
+                                        onClick={() => setSubTabNegocios('funil')}
+                                        style={{
+                                            padding: '8px 20px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s',
+                                            background: subTabNegocios === 'funil' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            color: subTabNegocios === 'funil' ? 'var(--text-primary)' : 'var(--text-muted)'
+                                        }}
+                                    >
+                                        Funil
+                                    </button>
+                                    <button
+                                        onClick={() => setSubTabNegocios('perdidos')}
+                                        style={{
+                                            padding: '8px 20px', fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer', borderRadius: 8, transition: 'all 0.2s',
+                                            background: subTabNegocios === 'perdidos' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            color: subTabNegocios === 'perdidos' ? 'var(--text-primary)' : 'var(--text-muted)'
+                                        }}
+                                    >
+                                        Perdidos{deals.filter(d => d.stage === 'perdido').length > 0 && ` (${deals.filter(d => d.stage === 'perdido').length})`}
                                     </button>
                                 </div>
                             </div>
@@ -1424,6 +1225,218 @@ export default function ComercialPage() {
                                     </table>
                                 )}
                             </div>
+                        )}
+
+                        {/* FUNIL VIEW */}
+                        {subTabNegocios === 'funil' && (() => {
+                            const totalAtivos = funnelData.reduce((s, d) => s + d.count, 0);
+                            const totalPerdidos = filteredDeals.filter(d => d.stage === 'perdido').length;
+                            const totalFechados = filteredDeals.filter(d => d.stage === 'fechado').length;
+                            const taxaGeral = (totalAtivos + totalFechados) > 0
+                                ? Math.round((totalFechados / (totalAtivos + totalFechados + totalPerdidos)) * 100)
+                                : 0;
+                            const valorPipeline = abertos.reduce((s, d) => s + d.value, 0);
+                            const maxCount = Math.max(...funnelData.map(s => s.count), 1);
+
+                            return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+                                    {/* Filter header */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)', alignSelf: 'flex-start' }}>
+                                        <Filter size={14} style={{ color: 'var(--text-muted)' }} />
+                                        <select className="form-select" style={{ minWidth: 120, fontSize: 13, background: 'transparent', border: 'none' }} value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
+                                            {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                        </select>
+                                        <select className="form-select" style={{ minWidth: 90, fontSize: 13, background: 'transparent', border: 'none' }} value={filterYear} onChange={e => setFilterYear(e.target.value)}>
+                                            {uniqueYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                        </select>
+                                    </div>
+
+                                    {/* KPI summary row */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                                        {[
+                                            { label: 'Leads Ativos', value: String(totalAtivos), color: '#3B82F6', icon: <Activity size={18} /> },
+                                            { label: 'Fechados', value: String(totalFechados), color: '#10B981', icon: <Handshake size={18} /> },
+                                            { label: 'Perdidos', value: String(totalPerdidos), color: '#EF4444', icon: <Ban size={18} /> },
+                                            { label: 'Valor no Pipeline', value: formatCurrency(valorPipeline), color: '#8B5CF6', icon: <DollarSign size={18} /> },
+                                        ].map(kpi => (
+                                            <div key={kpi.label} className="kpi-card" style={{ borderBottom: `3px solid ${kpi.color}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                    <div className="kpi-card-value" style={{ color: kpi.color, fontSize: 22 }}>{kpi.value}</div>
+                                                    <span style={{ color: kpi.color, opacity: 0.5 }}>{kpi.icon}</span>
+                                                </div>
+                                                <div className="kpi-card-label">{kpi.label}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Main funnel */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20 }}>
+
+                                        {/* Funnel visualization */}
+                                        <div className="chart-card" style={{ padding: '24px 32px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                                                <div>
+                                                    <div className="chart-title" style={{ marginBottom: 4 }}>Funil de Conversão</div>
+                                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                                        {MONTHS.find(m => m.value === filterMonth)?.label} {filterYear}
+                                                    </div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontSize: 24, fontWeight: 700, color: '#10B981' }}>{taxaGeral}%</div>
+                                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>conversão geral</div>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                                {funnelData.map((stage, idx) => {
+                                                    const widthPct = Math.max((stage.count / maxCount) * 100, 6);
+                                                    const isBottleneck = stage.conversionRate !== null && stage.conversionRate < 30;
+                                                    return (
+                                                        <div key={stage.name}>
+                                                            {idx > 0 && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '6px 0' }}>
+                                                                    <ArrowDown size={14} style={{ color: stage.conversionRate !== null && stage.conversionRate < 30 ? '#EF4444' : stage.conversionRate !== null && stage.conversionRate < 60 ? '#F59E0B' : '#6B7280' }} />
+                                                                    {stage.conversionRate !== null ? (
+                                                                        <span style={{
+                                                                            fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
+                                                                            color: isBottleneck ? '#EF4444' : stage.conversionRate < 60 ? '#F59E0B' : '#10B981',
+                                                                            background: isBottleneck ? 'rgba(239,68,68,0.1)' : stage.conversionRate < 60 ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
+                                                                            padding: '2px 8px', borderRadius: 20,
+                                                                        }}>
+                                                                            {stage.conversionRate}% conversão
+                                                                            {isBottleneck ? ' ⚠' : ''}
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
+                                                            )}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                                                <div style={{ width: 88, textAlign: 'right', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flexShrink: 0, letterSpacing: '0.01em' }}>
+                                                                    {stage.name}
+                                                                </div>
+                                                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                                    <div style={{
+                                                                        width: `${widthPct}%`, height: 36,
+                                                                        background: `linear-gradient(90deg, ${stage.fill}CC, ${stage.fill})`,
+                                                                        borderRadius: '0 8px 8px 0',
+                                                                        display: 'flex', alignItems: 'center', paddingLeft: 12,
+                                                                        transition: 'width 0.4s ease',
+                                                                        boxShadow: `0 0 12px ${stage.fill}33`,
+                                                                        minWidth: 44,
+                                                                    }}>
+                                                                        <span style={{ fontSize: 14, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>
+                                                                            {stage.count}
+                                                                        </span>
+                                                                    </div>
+                                                                    {stage.count > 0 && (
+                                                                        <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
+                                                                            {Math.round((stage.count / (totalAtivos + totalFechados || 1)) * 100)}%
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#EF4444', flexShrink: 0, display: 'inline-block' }} />
+                                                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Leads saídos como Perdidos este período:</span>
+                                                <span style={{ fontSize: 13, fontWeight: 700, color: '#EF4444' }}>{totalPerdidos}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Stage breakdown table */}
+                                        <div className="chart-card" style={{ padding: '24px 20px' }}>
+                                            <div className="chart-title" style={{ marginBottom: 20 }}>Por Etapa</div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                                {[...funnelData,
+                                                    { name: 'Perdido', count: totalPerdidos, fill: '#EF4444', conversionRate: null }
+                                                ].map(stage => (
+                                                    <div key={stage.name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.fill, flexShrink: 0, display: 'inline-block' }} />
+                                                        <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{stage.name}</span>
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <div style={{ fontSize: 16, fontWeight: 700, color: stage.fill }}>{stage.count}</div>
+                                                            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>leads</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                <div style={{ marginTop: 8, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Total no período</span>
+                                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{totalAtivos + totalFechados + totalPerdidos}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Per-seller breakdown */}
+                                    {teamStats.length > 0 && (
+                                        <div className="table-card">
+                                            <div className="table-card-title">Conversão por Vendedor</div>
+                                            <div style={{ overflowX: 'auto' }}>
+                                                <table className="data-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Vendedor</th>
+                                                            <th>Leads</th>
+                                                            <th>Fechados</th>
+                                                            <th>Taxa Conversão</th>
+                                                            <th>Receita</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {teamStats.map(s => (
+                                                            <tr key={s.name}>
+                                                                <td>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#000', flexShrink: 0 }}>
+                                                                            {s.name.charAt(0)}
+                                                                        </div>
+                                                                        <span style={{ fontWeight: 500 }}>{s.name}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td style={{ color: 'var(--text-muted)' }}>{s.leads}</td>
+                                                                <td style={{ color: '#10B981', fontWeight: 600 }}>{s.wins}</td>
+                                                                <td>
+                                                                    <span style={{
+                                                                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                                        padding: '2px 8px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                                                                        background: s.convRate >= 50 ? 'rgba(16,185,129,0.12)' : s.convRate >= 20 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
+                                                                        color: s.convRate >= 50 ? '#10B981' : s.convRate >= 20 ? '#F59E0B' : '#EF4444',
+                                                                    }}>
+                                                                        {s.convRate.toFixed(1)}%
+                                                                    </span>
+                                                                </td>
+                                                                <td style={{ fontWeight: 600 }}>{formatCurrency(s.value)}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
+
+                        {/* PERDIDOS VIEW */}
+                        {subTabNegocios === 'perdidos' && (
+                            <LeadsLostTab
+                                deals={deals}
+                                onRetomar={async (dealId: string, recordId: string) => {
+                                    try {
+                                        await updateDeal(dealId, { stage: 'prospeccao', data_entrada_etapa: new Date().toISOString(), motivo_perda: undefined });
+                                        await updateLeadLossRecord(recordId, { status: 'retomado' });
+                                        setDealsData(deals.map(d => d.id === dealId ? { ...d, stage: 'prospeccao', data_entrada_etapa: new Date().toISOString() } : d));
+                                        showToast('Lead retomado para Prospecção!');
+                                    } catch (e) {
+                                        console.error('Erro ao retomar lead:', e);
+                                        showToast('Erro ao retomar lead. Tente novamente.');
+                                    }
+                                }}
+                            />
                         )}
 
                         {/* LossLeadModal – replaces the old inline lost modal */}
@@ -1769,6 +1782,124 @@ export default function ComercialPage() {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+
+                        {/* Comissões Section */}
+                        <div style={{ marginTop: 8, paddingTop: 32, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 24 }}>Comissões</h2>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                                    <div className="kpi-card" style={{ borderBottom: '3px solid #10B981' }}>
+                                        <div className="kpi-card-value" style={{ color: '#10B981', fontSize: 24 }}>{formatCurrency(receitaGerada)}</div>
+                                        <div className="kpi-card-label">Receita no Período</div>
+                                    </div>
+                                    <div className="kpi-card" style={{ borderBottom: '3px solid #F59E0B' }}>
+                                        <div className="kpi-card-value" style={{ color: '#F59E0B', fontSize: 24 }}>
+                                            {formatCurrency(teamStats.reduce((sum, s) => sum + s.comissaoAtual, 0))}
+                                        </div>
+                                        <div className="kpi-card-label">Total de Comissões</div>
+                                    </div>
+                                    <div className="kpi-card" style={{ borderBottom: '3px solid #3B82F6' }}>
+                                        <div className="kpi-card-value" style={{ color: '#3B82F6', fontSize: 24 }}>
+                                            {receitaGerada > 0 ? ((teamStats.reduce((sum, s) => sum + s.comissaoAtual, 0) / receitaGerada) * 100).toFixed(1) : '0'}%
+                                        </div>
+                                        <div className="kpi-card-label">% Média de Comissão</div>
+                                    </div>
+                                    <div className="kpi-card" style={{ borderBottom: '3px solid #8B5CF6' }}>
+                                        <div className="kpi-card-value" style={{ color: '#8B5CF6', fontSize: 24 }}>{teamStats.length}</div>
+                                        <div className="kpi-card-label">Vendedores Ativos</div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
+                                        Detalhamento de Comissionamento
+                                    </div>
+                                    {teamStats.length === 0 ? (
+                                        <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                                            Nenhum vendedor ativo neste período.
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+                                            {teamStats.map(s => (
+                                                <div key={s.name} style={{
+                                                    background: 'var(--bg-secondary)',
+                                                    border: '1px solid rgba(255,255,255,0.06)',
+                                                    borderRadius: 14,
+                                                    padding: '20px 20px 16px',
+                                                    display: 'flex', flexDirection: 'column', gap: 14,
+                                                    transition: 'border-color 0.2s',
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                        <div style={{
+                                                            width: 40, height: 40, borderRadius: '50%', background: s.color,
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                            fontSize: 16, fontWeight: 700, color: '#000', flexShrink: 0
+                                                        }}>
+                                                            {s.name.charAt(0)}
+                                                        </div>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {s.name}
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                                                <Award size={12} style={{ color: '#F97316' }} />
+                                                                <span style={{ fontSize: 11, fontWeight: 600, color: '#F97316', background: 'rgba(249,115,22,0.1)', padding: '1px 7px', borderRadius: 10 }}>
+                                                                    {s.currentTierName}
+                                                                </span>
+                                                                {s.currentTierPerc > 0 && (
+                                                                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.currentTierPerc}% comissão</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '12px 14px' }}>
+                                                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Receita</div>
+                                                            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1 }}>{formatCurrency(s.value)}</div>
+                                                        </div>
+                                                        <div style={{ background: 'rgba(16,185,129,0.07)', borderRadius: 8, padding: '12px 14px', border: '1px solid rgba(16,185,129,0.15)' }}>
+                                                            <div style={{ fontSize: 10, color: '#10B981', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Comissão</div>
+                                                            <div style={{ fontSize: 15, fontWeight: 700, color: '#10B981', lineHeight: 1 }}>{formatCurrency(s.comissaoAtual)}</div>
+                                                        </div>
+                                                    </div>
+                                                    {s.metaVal > 0 && (
+                                                        <div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+                                                                <span>Meta do período</span>
+                                                                <span style={{ fontWeight: 600, color: s.metaPerc >= 100 ? '#10B981' : s.metaPerc >= 50 ? '#F59E0B' : 'var(--text-muted)' }}>
+                                                                    {s.metaPerc.toFixed(0)}%
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                                                                <div style={{
+                                                                    height: '100%',
+                                                                    width: `${Math.min(s.metaPerc, 100)}%`,
+                                                                    background: s.metaPerc >= 100 ? '#10B981' : s.metaPerc >= 50 ? '#F59E0B' : '#EF4444',
+                                                                    borderRadius: 3, transition: 'width 0.5s ease'
+                                                                }} />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {s.nextTierVal > 0 && (
+                                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                                                            <span>Próxima faixa</span>
+                                                            <span style={{ color: '#F97316', fontWeight: 600 }}>faltam {formatCurrency(s.nextTierVal - s.value)}</span>
+                                                        </div>
+                                                    )}
+                                                    <button
+                                                        className="btn btn-secondary"
+                                                        style={{ width: '100%', fontSize: 12, padding: '9px 16px', marginTop: 2, cursor: 'pointer', textAlign: 'center' }}
+                                                        onClick={() => { setSelectedSellerStats(s); setShowSellerModal(true); }}
+                                                    >
+                                                        Ver Detalhes
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -2497,136 +2628,6 @@ export default function ComercialPage() {
                     );
                 })()
             }
-            {activeTab === 'comissao' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-                        <div className="kpi-card" style={{ borderBottom: '3px solid #10B981' }}>
-                            <div className="kpi-card-value" style={{ color: '#10B981', fontSize: 24 }}>{formatCurrency(receitaGerada)}</div>
-                            <div className="kpi-card-label">Receita no Período</div>
-                        </div>
-                        <div className="kpi-card" style={{ borderBottom: '3px solid #F59E0B' }}>
-                            <div className="kpi-card-value" style={{ color: '#F59E0B', fontSize: 24 }}>
-                                {formatCurrency(teamStats.reduce((sum, s) => sum + s.comissaoAtual, 0))}
-                            </div>
-                            <div className="kpi-card-label">Total de Comissões</div>
-                        </div>
-                        <div className="kpi-card" style={{ borderBottom: '3px solid #3B82F6' }}>
-                            <div className="kpi-card-value" style={{ color: '#3B82F6', fontSize: 24 }}>
-                                {receitaGerada > 0 ? ((teamStats.reduce((sum, s) => sum + s.comissaoAtual, 0) / receitaGerada) * 100).toFixed(1) : '0'}%
-                            </div>
-                            <div className="kpi-card-label">% Média de Comissão</div>
-                        </div>
-                        <div className="kpi-card" style={{ borderBottom: '3px solid #8B5CF6' }}>
-                            <div className="kpi-card-value" style={{ color: '#8B5CF6', fontSize: 24 }}>{teamStats.length}</div>
-                            <div className="kpi-card-label">Vendedores Ativos</div>
-                        </div>
-                    </div>
-
-                    {/* Seller Cards Grid */}
-                    <div>
-                        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
-                            Detalhamento de Comissionamento
-                        </div>
-                        {teamStats.length === 0 ? (
-                            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                                Nenhum vendedor ativo neste período.
-                            </div>
-                        ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-                                {teamStats.map(s => (
-                                    <div key={s.name} style={{
-                                        background: 'var(--bg-secondary)',
-                                        border: '1px solid rgba(255,255,255,0.06)',
-                                        borderRadius: 14,
-                                        padding: '20px 20px 16px',
-                                        display: 'flex', flexDirection: 'column', gap: 14,
-                                        transition: 'border-color 0.2s',
-                                    }}>
-                                        {/* Header: avatar + name + tier */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                            <div style={{
-                                                width: 40, height: 40, borderRadius: '50%', background: s.color,
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                fontSize: 16, fontWeight: 700, color: '#000', flexShrink: 0
-                                            }}>
-                                                {s.name.charAt(0)}
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {s.name}
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                                    <Award size={12} style={{ color: '#F97316' }} />
-                                                    <span style={{
-                                                        fontSize: 11, fontWeight: 600, color: '#F97316',
-                                                        background: 'rgba(249,115,22,0.1)', padding: '1px 7px', borderRadius: 10
-                                                    }}>
-                                                        {s.currentTierName}
-                                                    </span>
-                                                    {s.currentTierPerc > 0 && (
-                                                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.currentTierPerc}% comissão</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Metrics row */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '12px 14px' }}>
-                                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Receita</div>
-                                                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1 }}>{formatCurrency(s.value)}</div>
-                                            </div>
-                                            <div style={{ background: 'rgba(16,185,129,0.07)', borderRadius: 8, padding: '12px 14px', border: '1px solid rgba(16,185,129,0.15)' }}>
-                                                <div style={{ fontSize: 10, color: '#10B981', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Comissão</div>
-                                                <div style={{ fontSize: 15, fontWeight: 700, color: '#10B981', lineHeight: 1 }}>{formatCurrency(s.comissaoAtual)}</div>
-                                            </div>
-                                        </div>
-
-                                        {/* Goal progress bar */}
-                                        {s.metaVal > 0 && (
-                                            <div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-                                                    <span>Meta do período</span>
-                                                    <span style={{ fontWeight: 600, color: s.metaPerc >= 100 ? '#10B981' : s.metaPerc >= 50 ? '#F59E0B' : 'var(--text-muted)' }}>
-                                                        {s.metaPerc.toFixed(0)}%
-                                                    </span>
-                                                </div>
-                                                <div style={{ height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
-                                                    <div style={{
-                                                        height: '100%',
-                                                        width: `${Math.min(s.metaPerc, 100)}%`,
-                                                        background: s.metaPerc >= 100 ? '#10B981' : s.metaPerc >= 50 ? '#F59E0B' : '#EF4444',
-                                                        borderRadius: 3, transition: 'width 0.5s ease'
-                                                    }} />
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Next tier progress */}
-                                        {s.nextTierVal > 0 && (
-                                            <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>Próxima faixa</span>
-                                                <span style={{ color: '#F97316', fontWeight: 600 }}>
-                                                    faltam {formatCurrency(s.nextTierVal - s.value)}
-                                                </span>
-                                            </div>
-                                        )}
-
-                                        {/* Action */}
-                                        <button
-                                            className="btn btn-secondary"
-                                            style={{ width: '100%', fontSize: 12, padding: '9px 16px', marginTop: 2, cursor: 'pointer', textAlign: 'center' }}
-                                            onClick={() => { setSelectedSellerStats(s); setShowSellerModal(true); }}
-                                        >
-                                            Ver Detalhes
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
 
             {/* Modal de Detalhes do Vendedor */}
             {showSellerModal && selectedSellerStats && (
@@ -3234,23 +3235,6 @@ export default function ComercialPage() {
                 );
             })()}
 
-            {/* TAB LEADS PERDIDOS */}
-            {activeTab === 'perdidos' && (
-                <LeadsLostTab
-                    deals={deals}
-                    onRetomar={async (dealId: string, recordId: string) => {
-                        try {
-                            await updateDeal(dealId, { stage: 'prospeccao', data_entrada_etapa: new Date().toISOString(), motivo_perda: undefined });
-                            await updateLeadLossRecord(recordId, { status: 'retomado' });
-                            setDealsData(deals.map(d => d.id === dealId ? { ...d, stage: 'prospeccao', data_entrada_etapa: new Date().toISOString() } : d));
-                            showToast('Lead retomado para Prospecção!');
-                        } catch (e) {
-                            console.error('Erro ao retomar lead:', e);
-                            showToast('Erro ao retomar lead. Tente novamente.');
-                        }
-                    }}
-                />
-            )}
         </div >
     );
 }

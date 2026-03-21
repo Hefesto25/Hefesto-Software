@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
-import { useOperationalTasks, useComercialTasks } from '@/lib/hooks';
+import { useOperationalTasks, useComercialTasks, useCalendarEvents } from '@/lib/hooks';
 import {
     Loader2, Calendar as CalendarIcon, AlertCircle, Circle, PlayCircle, Eye, CheckCircle2,
     KanbanSquare, List, ArrowRight
@@ -16,7 +16,7 @@ type UnifiedTask = {
     descricao?: string;
     status: 'backlog' | 'progress' | 'review' | 'done';
     prioridade?: 'Alta' | 'Média' | 'Baixa';
-    modulo: 'Operacional' | 'Comercial';
+    modulo: 'Operacional' | 'Comercial' | 'Calendário';
     data_vencimento?: string;
     responsaveis_ids?: string[];
     participantes_ids?: string[];
@@ -33,6 +33,7 @@ const KANBAN_COLUMNS = [
 const MODULE_COLORS: Record<string, { bg: string; text: string }> = {
     'Operacional': { bg: 'rgba(56, 189, 248, 0.12)', text: '#38bdf8' },
     'Comercial': { bg: 'rgba(250, 204, 21, 0.12)', text: '#facc15' },
+    'Calendário': { bg: 'rgba(139, 92, 246, 0.12)', text: '#a78bfa' },
 };
 
 function mapOperationalStatus(s: string): UnifiedTask['status'] {
@@ -61,10 +62,11 @@ export default function MinhasTarefasPage() {
     const { user } = useAuth();
     const { data: opTasks, loading: loadingOp } = useOperationalTasks();
     const { data: comTasks, loading: loadingCom } = useComercialTasks();
+    const { data: calEvents, loading: loadingCal } = useCalendarEvents(user?.id);
     const [filterModule, setFilterModule] = useState<string>('all');
     const [viewMode, setViewMode] = useState<'kanban' | 'lista'>('kanban');
 
-    const loading = loadingOp || loadingCom;
+    const loading = loadingOp || loadingCom || loadingCal;
 
     const unifiedTasks = useMemo(() => {
         if (!user) return [];
@@ -100,8 +102,27 @@ export default function MinhasTarefasPage() {
             }
         });
 
+        const today = new Date().toISOString().split('T')[0];
+        calEvents.forEach(ev => {
+            const isOwner = ev.owner_id === user.id;
+            const isParticipant = ev.participantes_ids?.includes(user.id);
+            if (!isOwner && !isParticipant) return;
+            const status: UnifiedTask['status'] = (ev.data || '') < today ? 'done' : 'backlog';
+            tasks.push({
+                id: ev.id,
+                titulo: ev.titulo,
+                descricao: ev.descricao,
+                status,
+                modulo: 'Calendário',
+                data_vencimento: ev.data,
+                responsaveis_ids: [],
+                participantes_ids: ev.participantes_ids || [],
+                originalUrl: '/calendario',
+            });
+        });
+
         return tasks;
-    }, [user, opTasks, comTasks]);
+    }, [user, opTasks, comTasks, calEvents]);
 
     const filteredTasks = useMemo(() => {
         if (filterModule === 'all') return unifiedTasks;
@@ -129,6 +150,9 @@ export default function MinhasTarefasPage() {
                     </button>
                     <button className={`finance-tab ${filterModule === 'Comercial' ? 'active' : ''}`} onClick={() => setFilterModule('Comercial')}>
                         Comercial
+                    </button>
+                    <button className={`finance-tab ${filterModule === 'Calendário' ? 'active' : ''}`} onClick={() => setFilterModule('Calendário')}>
+                        Calendário
                     </button>
                 </div>
                 <div style={{ display: 'flex', gap: 4, background: 'var(--bg-secondary)', borderRadius: 8, padding: 4 }}>

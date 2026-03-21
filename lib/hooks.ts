@@ -27,7 +27,9 @@ import type {
     ActiveTaskMention,
     DiretorioFerramentaPredefinida,
     BankImport, BankImportTransaction,
-    LeadLossRecord
+    LeadLossRecord,
+    TaskTemplate, TaskTemplateSubtarefa,
+    AsaasCobranca
 } from './types';
 import type { ParsedTransaction } from './bankParser';
 import { reconcileTransactions } from './bankParser';
@@ -89,9 +91,6 @@ export function useUsuarios() {
     return useSupabaseTable<UsuarioDB>('usuarios', { column: 'created_at', ascending: false });
 }
 
-const SUPABASE_URL = 'https://hlqftzvwilbwchfqelqy.supabase.co';
-
-import { createBrowserClient } from '@supabase/ssr';
 import { supabaseUrl, supabaseAnonKey } from './supabase';
 
 /**
@@ -345,6 +344,122 @@ export async function removeSubtarefa(id: string) {
         .from('subtarefas_operacionais')
         .delete()
         .eq('id', id);
+    if (error) throw error;
+}
+
+// Task Templates
+export function useTaskTemplates() {
+    const [data, setData] = useState<TaskTemplate[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetch = async () => {
+        setLoading(true);
+        const { data: templates, error } = await supabase
+            .from('task_templates')
+            .select('*, subtarefas:task_template_subtarefas(*)')
+            .eq('ativo', true)
+            .order('nome', { ascending: true });
+        if (error) console.error('Error fetching task templates:', error);
+        else setData((templates ?? []) as TaskTemplate[]);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetch(); }, []);
+    return { data, loading, refetch: fetch };
+}
+
+export async function addTaskTemplate(nome: string, descricao: string, subtarefas: string[], criadoPor?: string) {
+    const { data: template, error } = await supabase
+        .from('task_templates')
+        .insert({ nome, descricao, criado_por: criadoPor ?? null, ativo: true })
+        .select()
+        .single();
+    if (error) throw error;
+
+    if (subtarefas.length > 0) {
+        const rows = subtarefas.map((titulo, i) => ({ template_id: template.id, titulo, ordem: i + 1 }));
+        const { error: subErr } = await supabase.from('task_template_subtarefas').insert(rows);
+        if (subErr) throw subErr;
+    }
+    return template as TaskTemplate;
+}
+
+export async function updateTaskTemplate(id: string, nome: string, descricao: string, subtarefas: string[]) {
+    const { error } = await supabase
+        .from('task_templates')
+        .update({ nome, descricao })
+        .eq('id', id);
+    if (error) throw error;
+
+    await supabase.from('task_template_subtarefas').delete().eq('template_id', id);
+    if (subtarefas.length > 0) {
+        const rows = subtarefas.map((titulo, i) => ({ template_id: id, titulo, ordem: i + 1 }));
+        const { error: subErr } = await supabase.from('task_template_subtarefas').insert(rows);
+        if (subErr) throw subErr;
+    }
+}
+
+export async function archiveTaskTemplate(id: string) {
+    const { error } = await supabase.from('task_templates').update({ ativo: false }).eq('id', id);
+    if (error) throw error;
+}
+
+// Controle de Faturamento (Asaas)
+export function useAsaasCobranças(mesAno?: string) {
+    const [data, setData] = useState<AsaasCobranca[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetch = async () => {
+        setLoading(true);
+        let query = supabase
+            .from('asaas_cobranças')
+            .select('*')
+            .order('data_vencimento', { ascending: false });
+
+        if (mesAno) {
+            // mesAno format: "YYYY-MM" — filter by data_vencimento month
+            query = query
+                .gte('data_vencimento', `${mesAno}-01`)
+                .lte('data_vencimento', `${mesAno}-31`);
+        }
+
+        const { data: result, error } = await query;
+        if (error) console.error('Error fetching asaas_cobranças:', error);
+        else setData(result ?? []);
+        setLoading(false);
+    };
+
+    useEffect(() => { fetch(); }, [mesAno]);
+    return { data, loading, refetch: fetch };
+}
+
+export async function addAsaasCobranca(cobranca: Omit<AsaasCobranca, 'id' | 'created_at' | 'updated_at'>) {
+    const { data, error } = await supabase
+        .from('asaas_cobranças')
+        .insert(cobranca)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as AsaasCobranca;
+}
+
+export async function updateAsaasCobrancaStatus(
+    id: string,
+    status: AsaasCobranca['status'],
+    extra?: { numero_nf?: string; observacoes?: string }
+) {
+    const { data, error } = await supabase
+        .from('asaas_cobranças')
+        .update({ status, ...extra })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as AsaasCobranca;
+}
+
+export async function removeAsaasCobranca(id: string) {
+    const { error } = await supabase.from('asaas_cobranças').delete().eq('id', id);
     if (error) throw error;
 }
 
@@ -1256,7 +1371,6 @@ export async function sendAssigneeNotificationsAndCalendar(
 
 // =========== TEMPLATES MODULE ===========
 
-const SUPABASE_STORAGE_URL = 'https://hlqftzvwilbwchfqelqy.supabase.co/storage/v1/object/public';
 
 export function useTemplateCategorias(tipo?: 'modelo' | 'site') {
     const [data, setData] = useState<TemplateCategoria[]>([]);

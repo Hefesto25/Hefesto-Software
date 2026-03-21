@@ -255,7 +255,7 @@ export interface OperationalTask {
     responsavel_id?: string; // legacy single
     responsaveis_ids?: string[]; // new multi-assignee
     participantes_ids?: string[]; // co-participants
-    status: 'A Fazer' | 'Fazendo' | 'Revisando' | 'Finalizado' | 'pendente' | 'em_andamento' | 'concluido';
+    status: 'Novas Funcionalidades' | 'A Fazer' | 'Fazendo' | 'Revisando' | 'Finalizado' | 'pendente' | 'em_andamento' | 'concluido';
     origem: 'comercial_automatico' | 'manual' | string;
     data_criacao?: string;
     data_conclusao?: string;
@@ -594,6 +594,44 @@ export interface DiretorioFerramentaPredefinida {
     id: string;
     name: string;
     created_at?: string;
+}
+
+// ===== CONTROLE DE FATURAMENTO =====
+
+export interface AsaasCobranca {
+    id: string;
+    cliente_id: string;
+    cliente_nome: string;
+    valor: number;
+    status: 'pendente' | 'enviada' | 'nf_gerada' | 'nf_verificada';
+    data_emissao: string;
+    data_vencimento: string;
+    numero_nf?: string | null;
+    observacoes?: string | null;
+    criado_por?: string | null;
+    updated_at?: string;
+    created_at?: string;
+}
+
+// ===== TASK TEMPLATES MODULE =====
+
+export interface TaskTemplateSubtarefa {
+    id: string;
+    template_id: string;
+    titulo: string;
+    ordem: number;
+    created_at?: string;
+}
+
+export interface TaskTemplate {
+    id: string;
+    nome: string;
+    descricao?: string;
+    criado_por?: string;
+    ativo: boolean;
+    created_at?: string;
+    // Joined
+    subtarefas?: TaskTemplateSubtarefa[];
 }
 
 // ===== BANK IMPORT MODULE =====

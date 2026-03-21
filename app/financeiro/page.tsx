@@ -14,10 +14,11 @@ import {
     addBudgetPlanItem, updateBudgetPlanItem, removeBudgetPlanItem,
     useFinancialTransactions, addFinancialTransaction, updateFinancialTransaction, removeFinancialTransaction,
     useClients, useFinancialTaxes, addFinancialTax, updateFinancialTax, removeFinancialTax,
-    useBankImports, saveBankImport, confirmBankImport
+    useBankImports, saveBankImport, confirmBankImport,
+    useAsaasCobranças, addAsaasCobranca, updateAsaasCobrancaStatus, removeAsaasCobranca
 } from '@/lib/hooks';
 import { formatCurrencyInput, parseCurrencyInput, getBahiaDate, getBahiaDateString, formatLocalSystemDate } from '@/lib/utils';
-import type { FinancialGoal, FinancialTransaction, FinancialTax, BankImport, BankImportTransaction } from '@/lib/types';
+import type { FinancialGoal, FinancialTransaction, FinancialTax, BankImport, BankImportTransaction, AsaasCobranca } from '@/lib/types';
 import { parseOFX, parseSpreadsheet, isDuplicate } from '@/lib/bankParser';
 import type { ParsedTransaction } from '@/lib/bankParser';
 
@@ -57,7 +58,7 @@ const MONTH_NAMES: Record<string, string> = {
 
 const PIE_COLORS = ['#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#3B82F6', '#EF4444', '#06B6D4', '#A78BFA', '#F472B6'];
 
-type Tab = 'painel' | 'movimentacoes' | 'planejamento';
+type Tab = 'painel' | 'movimentacoes' | 'planejamento' | 'faturamento';
 type MovFilterQuick = 'todos' | 'futuros' | 'concluidos' | 'recorrentes' | 'impostos';
 type LancamentoTipoModal = 'avulso' | 'recorrente' | 'imposto';
 type SubTabPlanejamento = 'dre' | 'metas';
@@ -74,6 +75,18 @@ export default function FinanceiroPage() {
     const { data: budgetPlanData, loading: loadingBudget } = useBudgetPlan();
     const { data: clients, loading: loadingClients } = useClients();
     const { data: taxesData, loading: loadingTaxes, refetch: refetchTaxes } = useFinancialTaxes();
+
+    // Controle de Faturamento
+    const [fatMesAno, setFatMesAno] = useState(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const [fatStatusFiltro, setFatStatusFiltro] = useState<'todos' | AsaasCobranca['status']>('todos');
+    const { data: cobranças, loading: loadingCobranças, refetch: refetchCobranças } = useAsaasCobranças(fatMesAno);
+    const [showNovaCobrancaModal, setShowNovaCobrancaModal] = useState(false);
+    const [cobrancaForm, setCobrancaForm] = useState<Partial<AsaasCobranca>>({ status: 'pendente', data_emissao: new Date().toISOString().slice(0, 10) });
+    const [cobrancaFormError, setCobrancaFormError] = useState('');
+    const [savingCobranca, setSavingCobranca] = useState(false);
 
     const [goals, setGoals] = useState<FinancialGoal[]>([]);
     const [budgetPlan, setBudgetPlan] = useState<any[]>([]);
@@ -599,6 +612,7 @@ export default function FinanceiroPage() {
         { key: 'painel', label: 'Painel' },
         { key: 'movimentacoes', label: 'Movimentações' },
         { key: 'planejamento', label: 'Planejamento' },
+        { key: 'faturamento', label: 'Controle de Faturamento' },
     ];
 
     return (
@@ -1848,6 +1862,186 @@ export default function FinanceiroPage() {
                 )
             }
 
+
+            {/* ====== ABA CONTROLE DE FATURAMENTO ====== */}
+            {activeTab === 'faturamento' && (() => {
+                const STATUS_CONFIG = {
+                    pendente:     { label: 'Pendente',      color: '#EF4444', bg: 'rgba(239,68,68,0.12)',    next: 'enviada'     as const },
+                    enviada:      { label: 'Cobrança Enviada', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', next: 'nf_gerada'  as const },
+                    nf_gerada:    { label: 'NF Gerada',     color: '#3B82F6', bg: 'rgba(59,130,246,0.12)',  next: 'nf_verificada' as const },
+                    nf_verificada:{ label: 'NF Verificada', color: '#10B981', bg: 'rgba(16,185,129,0.12)',  next: null },
+                };
+                const filtradas = cobranças.filter(c => fatStatusFiltro === 'todos' || c.status === fatStatusFiltro);
+                const hoje = new Date().toISOString().slice(0, 10);
+
+                async function avancarStatus(c: AsaasCobranca) {
+                    const next = STATUS_CONFIG[c.status].next;
+                    if (!next) return;
+                    await updateAsaasCobrancaStatus(c.id, next);
+                    refetchCobranças();
+                }
+
+                async function handleNovaCobranaca() {
+                    setCobrancaFormError('');
+                    if (!cobrancaForm.cliente_nome?.trim()) { setCobrancaFormError('Informe o nome do cliente.'); return; }
+                    if (!cobrancaForm.valor || cobrancaForm.valor <= 0) { setCobrancaFormError('Informe o valor.'); return; }
+                    if (!cobrancaForm.data_vencimento) { setCobrancaFormError('Informe o vencimento.'); return; }
+                    setSavingCobranca(true);
+                    try {
+                        await addAsaasCobranca({
+                            cliente_id: cobrancaForm.cliente_id || '',
+                            cliente_nome: cobrancaForm.cliente_nome!.trim(),
+                            valor: Number(cobrancaForm.valor),
+                            status: 'pendente',
+                            data_emissao: cobrancaForm.data_emissao || hoje,
+                            data_vencimento: cobrancaForm.data_vencimento!,
+                            numero_nf: null,
+                            observacoes: cobrancaForm.observacoes || null,
+                        });
+                        setShowNovaCobrancaModal(false);
+                        setCobrancaForm({ status: 'pendente', data_emissao: hoje });
+                        refetchCobranças();
+                    } catch { setCobrancaFormError('Erro ao salvar. Tente novamente.'); }
+                    finally { setSavingCobranca(false); }
+                }
+
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        {/* Toolbar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                            <input type="month" className="form-input" value={fatMesAno} onChange={e => setFatMesAno(e.target.value)} style={{ width: 160 }} />
+                            <div style={{ display: 'flex', gap: 6 }}>
+                                {(['todos', 'pendente', 'enviada', 'nf_gerada', 'nf_verificada'] as const).map(s => (
+                                    <button key={s} onClick={() => setFatStatusFiltro(s)} style={{
+                                        fontSize: 12, padding: '4px 12px', borderRadius: 20, cursor: 'pointer', border: '1px solid',
+                                        background: fatStatusFiltro === s ? 'var(--accent)' : 'transparent',
+                                        color: fatStatusFiltro === s ? '#fff' : 'var(--text-muted)',
+                                        borderColor: fatStatusFiltro === s ? 'var(--accent)' : 'var(--border-default)',
+                                    }}>
+                                        {s === 'todos' ? 'Todas' : STATUS_CONFIG[s].label}
+                                    </button>
+                                ))}
+                            </div>
+                            <div style={{ flex: 1 }} />
+                            <button className="btn btn-primary" style={{ cursor: 'pointer' }} onClick={() => setShowNovaCobrancaModal(true)}>
+                                <Plus size={14} /> Nova Cobrança
+                            </button>
+                        </div>
+
+                        {/* Tabela */}
+                        <div style={{ overflowX: 'auto' }}>
+                            <table className="data-table" style={{ width: '100%' }}>
+                                <thead>
+                                    <tr>
+                                        <th>Cliente</th>
+                                        <th>Valor</th>
+                                        <th>Emissão</th>
+                                        <th>Vencimento</th>
+                                        <th>Status</th>
+                                        <th style={{ width: 160 }}>Ação</th>
+                                        <th style={{ width: 40 }}></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {loadingCobranças && (
+                                        <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>Carregando...</td></tr>
+                                    )}
+                                    {!loadingCobranças && filtradas.length === 0 && (
+                                        <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>Nenhuma cobrança encontrada.</td></tr>
+                                    )}
+                                    {filtradas.map(c => {
+                                        const cfg = STATUS_CONFIG[c.status];
+                                        const vencido = c.data_vencimento < hoje && c.status !== 'nf_verificada';
+                                        const urgente = !vencido && c.status !== 'nf_verificada' &&
+                                            Math.ceil((new Date(c.data_vencimento).getTime() - new Date(hoje).getTime()) / 86400000) <= 3;
+                                        return (
+                                            <tr key={c.id} style={vencido ? { borderLeft: '3px solid #EF4444' } : undefined}>
+                                                <td style={{ fontWeight: 500 }}>{c.cliente_nome}</td>
+                                                <td>{formatCurrency(c.valor)}</td>
+                                                <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{c.data_emissao}</td>
+                                                <td style={{ color: vencido ? '#EF4444' : urgente ? '#F59E0B' : 'var(--text-muted)', fontSize: 12, fontWeight: (vencido || urgente) ? 600 : 400 }}>
+                                                    {c.data_vencimento}
+                                                    {vencido && <span style={{ marginLeft: 6, fontSize: 10, background: 'rgba(239,68,68,0.15)', color: '#EF4444', padding: '1px 6px', borderRadius: 10 }}>Vencida</span>}
+                                                </td>
+                                                <td>
+                                                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: cfg.bg, color: cfg.color }}>
+                                                        {cfg.label}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    {cfg.next && (
+                                                        <button onClick={() => avancarStatus(c)} style={{
+                                                            fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                                                            background: 'var(--accent-muted)', color: 'var(--accent-light)',
+                                                            border: '1px solid var(--accent-muted)',
+                                                        }}>
+                                                            → {STATUS_CONFIG[cfg.next].label}
+                                                        </button>
+                                                    )}
+                                                    {c.status === 'nf_verificada' && (
+                                                        <span style={{ fontSize: 11, color: '#10B981' }}>✓ Concluída</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <button onClick={async () => { await removeAsaasCobranca(c.id); refetchCobranças(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }} title="Remover">
+                                                        <X size={14} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Modal Nova Cobrança */}
+                        {showNovaCobrancaModal && (
+                            <div className="modal-overlay" onClick={() => setShowNovaCobrancaModal(false)}>
+                                <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+                                    <div className="modal-header">
+                                        <h2 className="modal-title">Nova Cobrança</h2>
+                                        <button className="modal-close" onClick={() => setShowNovaCobrancaModal(false)} style={{ cursor: 'pointer' }}><X size={16} /></button>
+                                    </div>
+                                    <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                        <div>
+                                            <label className="form-label">Cliente *</label>
+                                            <input type="text" className="form-input" value={cobrancaForm.cliente_nome || ''} onChange={e => setCobrancaForm(p => ({ ...p, cliente_nome: e.target.value }))} placeholder="Nome do cliente" list="clientes-list" />
+                                            <datalist id="clientes-list">
+                                                {clients.map(c => <option key={c.id} value={c.nome} />)}
+                                            </datalist>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                            <div>
+                                                <label className="form-label">Valor (R$) *</label>
+                                                <input type="number" className="form-input" value={cobrancaForm.valor || ''} onChange={e => setCobrancaForm(p => ({ ...p, valor: Number(e.target.value) }))} placeholder="0,00" min="0" step="0.01" />
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Data de Emissão</label>
+                                                <input type="date" className="form-input" value={cobrancaForm.data_emissao || ''} onChange={e => setCobrancaForm(p => ({ ...p, data_emissao: e.target.value }))} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="form-label">Vencimento *</label>
+                                            <input type="date" className="form-input" value={cobrancaForm.data_vencimento || ''} onChange={e => setCobrancaForm(p => ({ ...p, data_vencimento: e.target.value }))} />
+                                        </div>
+                                        <div>
+                                            <label className="form-label">Observações</label>
+                                            <input type="text" className="form-input" value={cobrancaForm.observacoes || ''} onChange={e => setCobrancaForm(p => ({ ...p, observacoes: e.target.value }))} placeholder="Referência, competência..." />
+                                        </div>
+                                        {cobrancaFormError && <div style={{ color: '#EF4444', fontSize: 13, background: 'rgba(239,68,68,0.1)', padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)' }}>{cobrancaFormError}</div>}
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
+                                            <button className="btn btn-secondary" onClick={() => setShowNovaCobrancaModal(false)} style={{ cursor: 'pointer' }}>Cancelar</button>
+                                            <button className="btn btn-primary" onClick={handleNovaCobranaca} disabled={savingCobranca} style={{ cursor: 'pointer' }}>
+                                                {savingCobranca ? 'Salvando...' : 'Criar Cobrança'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* ====== MODAL UNIFICADO ====== */}
             {transactionModal && (

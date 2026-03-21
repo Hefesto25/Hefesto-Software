@@ -86,10 +86,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                     event: 'INSERT',
                     schema: 'public',
                     table: 'notificacoes',
-                    filter: `usuario_id=eq.${userId}`,
                 },
                 (payload) => {
                     const newNotif = payload.new as Notification;
+                    // Filter client-side — server-side filter on non-PK columns
+                    // can be unreliable with DEFAULT replica identity
+                    if (newNotif.usuario_id !== userId) return;
                     setData((prev: Notification[]) => [newNotif, ...prev]);
 
                     // Trigger browser push notification

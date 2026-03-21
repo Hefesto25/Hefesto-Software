@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useUsuarios, createNotificationIfEnabled, useClients, useSubtarefas, useTodasSubtarefas, addSubtarefa, toggleSubtarefa, removeSubtarefa } from '@/lib/hooks';
+import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useUsuarios, createNotificationIfEnabled, useClients, useSubtarefas, useTodasSubtarefas, addSubtarefa, toggleSubtarefa, removeSubtarefa, useTaskTemplates, addTaskTemplate, updateTaskTemplate, archiveTaskTemplate } from '@/lib/hooks';
 import { useAuth } from '../contexts/AuthContext';
-import { Activity, Clock, CheckCircle2, LayoutDashboard, List, PieChart, Plus, Search as SearchIcon, Eye, Users, ChevronLeft, Trash2, X, Calendar, ChevronRight, GripVertical } from 'lucide-react';
+import { Activity, Clock, CheckCircle2, LayoutDashboard, List, PieChart, Plus, Search as SearchIcon, Eye, Users, ChevronLeft, Trash2, X, Calendar, ChevronRight, GripVertical, Sparkles } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell } from 'recharts';
-import type { OperationalTask } from '@/lib/types';
+import type { OperationalTask, TaskTemplate } from '@/lib/types';
 import { getBahiaDate, getBahiaDateString, formatLocalSystemDate, calcularProgresso } from '@/lib/utils';
 
 function DifficultyDots({ value = 0 }: { value?: number }) {
@@ -469,15 +469,12 @@ function TaskDetailPanel({ task, onClose, onTaskUpdate, onEdit, user }: { task: 
           </div>
         </div>
       </div>
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      `}} />
     </>
   );
 }
 
 const KANBAN_COLUMNS = [
+    { id: 'Novas Funcionalidades', label: 'Novas Funcionalidades', icon: <Sparkles size={16} />, color: '#06B6D4' },
     { id: 'A Fazer', label: 'A Fazer', icon: <Clock size={16} />, color: '#F59E0B' },
     { id: 'Fazendo', label: 'Fazendo', icon: <Activity size={16} />, color: '#3B82F6' },
     { id: 'Revisando', label: 'Revisando', icon: <Eye size={16} />, color: '#8B5CF6' },
@@ -491,11 +488,24 @@ export default function OperacionalPage() {
     const { data: clients, loading: loadingClients } = useClients();
     const { user } = useAuth();
     const [draggedTask, setDraggedTask] = useState<OperationalTask | null>(null);
-    const [activeTab, setActiveTab] = useState<'operacoes' | 'painel' | 'kanban' | 'historico'>('painel');
+    const [activeTab, setActiveTab] = useState<'operacoes' | 'painel' | 'kanban' | 'historico' | 'templates'>('painel');
     const [selectedOpsClient, setSelectedOpsClient] = useState<any>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [showNewTaskModal, setShowNewTaskModal] = useState(false);
     const [showEditTaskModal, setShowEditTaskModal] = useState(false);
+    const [templateSearch, setTemplateSearch] = useState('');
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+    const [pendingSubtarefas, setPendingSubtarefas] = useState<string[]>([]);
+    const { data: taskTemplates, refetch: refetchTemplates } = useTaskTemplates();
+    const [showTemplateModal, setShowTemplateModal] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null);
+    const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+    const [tplFormNome, setTplFormNome] = useState('');
+    const [tplFormDescricao, setTplFormDescricao] = useState('');
+    const [tplFormSubtarefas, setTplFormSubtarefas] = useState<string[]>(['']);
+    const [tplFormError, setTplFormError] = useState('');
+    const [tplSaving, setTplSaving] = useState(false);
+    const [confirmArchiveTemplate, setConfirmArchiveTemplate] = useState<{ id: string; nome: string } | null>(null);
     const [selectedTaskPanel, setSelectedTaskPanel] = useState<OperationalTask | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [confirmClearHistory, setConfirmClearHistory] = useState(false);
@@ -631,6 +641,11 @@ export default function OperacionalPage() {
                 status: 'A Fazer',
                 origem: 'manual',
             });
+            for (let i = 0; i < pendingSubtarefas.length; i++) {
+                if (pendingSubtarefas[i].trim()) {
+                    await addSubtarefa(created.id, pendingSubtarefas[i].trim(), i + 1);
+                }
+            }
             setTasksData([...tasks, created]);
 
             // Notify assigned user
@@ -841,6 +856,7 @@ export default function OperacionalPage() {
     { key: 'operacoes', label: 'Operações' },
     { key: 'kanban', label: 'Kanban Geral' },
     { key: 'historico', label: 'Histórico' },
+    { key: 'templates', label: 'Templates de Tarefas' },
   ] as { key: typeof activeTab; label: string }[]).map(tab => (
     <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`finance-tab ${activeTab === tab.key ? 'active' : ''}`}>
       {tab.label}
@@ -1244,15 +1260,255 @@ export default function OperacionalPage() {
                 </div>
             )}
 
+            {/* TAB TEMPLATES DE TAREFAS */}
+            {activeTab === 'templates' && (() => {
+                function openNewTemplate() {
+                    setEditingTemplate(null);
+                    setTplFormNome(''); setTplFormDescricao(''); setTplFormSubtarefas(['']); setTplFormError('');
+                    setShowTemplateModal(true);
+                }
+                function openEditTemplate(t: TaskTemplate) {
+                    setEditingTemplate(t);
+                    setTplFormNome(t.nome);
+                    setTplFormDescricao(t.descricao ?? '');
+                    setTplFormSubtarefas((t.subtarefas ?? []).sort((a, b) => a.ordem - b.ordem).map(s => s.titulo).concat(['']));
+                    setTplFormError('');
+                    setShowTemplateModal(true);
+                }
+                async function handleSaveTemplate() {
+                    setTplFormError('');
+                    if (!tplFormNome.trim()) { setTplFormError('Informe o nome do template.'); return; }
+                    const subs = tplFormSubtarefas.filter(s => s.trim());
+                    setTplSaving(true);
+                    try {
+                        if (editingTemplate) {
+                            await updateTaskTemplate(editingTemplate.id, tplFormNome.trim(), tplFormDescricao.trim(), subs);
+                        } else {
+                            await addTaskTemplate(tplFormNome.trim(), tplFormDescricao.trim(), subs);
+                        }
+                        await refetchTemplates();
+                        setShowTemplateModal(false);
+                    } catch (e: any) {
+                        const msg = e?.message || e?.error_description || JSON.stringify(e);
+                        setTplFormError(`Erro: ${msg}`);
+                        console.error('Erro ao salvar template:', e);
+                    } finally { setTplSaving(false); }
+                }
+                async function handleArchiveTemplate(id: string) {
+                    await archiveTaskTemplate(id);
+                    await refetchTemplates();
+                    setConfirmArchiveTemplate(null);
+                }
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <h2 className="section-title" style={{ margin: 0 }}>Templates de Tarefas</h2>
+                                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                                    Crie tarefas padronizadas com sub-tarefas pré-definidas. Ao criar uma tarefa, selecione um template para carregar tudo automaticamente.
+                                </p>
+                            </div>
+                            <button className="btn btn-primary" style={{ cursor: 'pointer' }} onClick={openNewTemplate}>
+                                <Plus size={14} /> Novo Template
+                            </button>
+                        </div>
+
+                        {taskTemplates.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 60, border: '1px dashed var(--border-default)', borderRadius: 12 }}>
+                                Nenhum template criado ainda. Clique em "Novo Template" para começar.
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {taskTemplates.map(t => {
+                                    const isExpanded = expandedTemplateId === t.id;
+                                    const subtarefas = (t.subtarefas ?? []).sort((a, b) => a.ordem - b.ordem);
+                                    return (
+                                        <div key={t.id} style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-default)', borderRadius: 12, overflow: 'hidden' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', gap: 12 }}>
+                                                <Sparkles size={15} style={{ color: 'var(--accent-light)', flexShrink: 0 }} />
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{t.nome}</div>
+                                                    {t.descricao && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{t.descricao}</div>}
+                                                </div>
+                                                <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
+                                                    {subtarefas.length} sub-tarefa{subtarefas.length !== 1 ? 's' : ''}
+                                                </span>
+                                                <button onClick={() => setExpandedTemplateId(isExpanded ? null : t.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                                                    <ChevronRight size={16} style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+                                                </button>
+                                                <button onClick={() => openEditTemplate(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }} title="Editar">
+                                                    <Eye size={14} />
+                                                </button>
+                                                <button onClick={() => setConfirmArchiveTemplate({ id: t.id, nome: t.nome })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }} title="Arquivar">
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                            {isExpanded && subtarefas.length > 0 && (
+                                                <div style={{ borderTop: '1px solid var(--border-default)', padding: '12px 16px 14px 44px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                    {subtarefas.map((s, i) => (
+                                                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+                                                            <span style={{ color: 'var(--text-muted)', fontSize: 11, width: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+                                                            {s.titulo}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* Modal Confirmar Arquivamento */}
+                        {confirmArchiveTemplate && (
+                            <div className="modal-overlay" onClick={() => setConfirmArchiveTemplate(null)}>
+                                <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                                    <div className="modal-header">
+                                        <h2 className="modal-title">Arquivar Template</h2>
+                                        <button className="modal-close" style={{ cursor: 'pointer' }} onClick={() => setConfirmArchiveTemplate(null)}><X size={16} /></button>
+                                    </div>
+                                    <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                                        <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                            Deseja arquivar o template <strong style={{ color: 'var(--text-primary)' }}>{confirmArchiveTemplate.nome}</strong>? Ele não aparecerá mais na lista de templates, mas as tarefas criadas a partir dele não serão afetadas.
+                                        </p>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                                            <button className="btn btn-secondary" style={{ cursor: 'pointer' }} onClick={() => setConfirmArchiveTemplate(null)}>Cancelar</button>
+                                            <button className="btn btn-danger" style={{ cursor: 'pointer', background: '#EF4444', color: '#fff', border: 'none' }} onClick={() => handleArchiveTemplate(confirmArchiveTemplate.id)}>Arquivar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modal Criar/Editar Template */}
+                        {showTemplateModal && (
+                            <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
+                                <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
+                                    <div className="modal-header">
+                                        <h2 className="modal-title">{editingTemplate ? 'Editar Template' : 'Novo Template'}</h2>
+                                        <button className="modal-close" style={{ cursor: 'pointer' }} onClick={() => setShowTemplateModal(false)}><X size={16} /></button>
+                                    </div>
+                                    <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                        <div>
+                                            <label className="form-label">Nome do Template *</label>
+                                            <input type="text" className="form-input" value={tplFormNome} onChange={e => setTplFormNome(e.target.value)} placeholder="Ex: IA de Atendimento" />
+                                        </div>
+                                        <div>
+                                            <label className="form-label">Descrição</label>
+                                            <input type="text" className="form-input" value={tplFormDescricao} onChange={e => setTplFormDescricao(e.target.value)} placeholder="Breve descrição do que este template representa" />
+                                        </div>
+                                        <div>
+                                            <label className="form-label">Sub-tarefas padrão</label>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                {tplFormSubtarefas.map((s, i) => (
+                                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                        <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+                                                        <input
+                                                            type="text"
+                                                            className="form-input"
+                                                            value={s}
+                                                            onChange={e => setTplFormSubtarefas(prev => prev.map((x, idx) => idx === i ? e.target.value : x))}
+                                                            placeholder={`Sub-tarefa ${i + 1}...`}
+                                                            style={{ flex: 1 }}
+                                                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setTplFormSubtarefas(prev => [...prev, '']); } }}
+                                                        />
+                                                        {tplFormSubtarefas.length > 1 && (
+                                                            <button onClick={() => setTplFormSubtarefas(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, padding: '0 4px' }}>×</button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                <button onClick={() => setTplFormSubtarefas(prev => [...prev, ''])} style={{ alignSelf: 'flex-start', fontSize: 12, color: 'var(--accent-light)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                                                    <Plus size={12} /> Adicionar sub-tarefa
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {tplFormError && <div style={{ color: '#EF4444', fontSize: 13, background: 'rgba(239,68,68,0.1)', padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)' }}>{tplFormError}</div>}
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
+                                            <button className="btn btn-secondary" style={{ cursor: 'pointer' }} onClick={() => setShowTemplateModal(false)}>Cancelar</button>
+                                            <button className="btn btn-primary" style={{ cursor: 'pointer' }} onClick={handleSaveTemplate} disabled={tplSaving}>
+                                                {tplSaving ? 'Salvando...' : editingTemplate ? 'Salvar Alterações' : 'Criar Template'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
+
             {/* Modal Nova Tarefa */}
             {showNewTaskModal && (
-                <div className="modal-overlay" onClick={() => setShowNewTaskModal(false)}>
+                <div className="modal-overlay" onClick={() => { setShowNewTaskModal(false); setSelectedTemplateId(null); setPendingSubtarefas([]); setTemplateSearch(''); }}>
                     <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
                         <div className="modal-header">
                             <h2 className="modal-title">Nova Tarefa Operacional</h2>
-                            <button className="modal-close" style={{ cursor: 'pointer' }} onClick={() => setShowNewTaskModal(false)}><X size={16} /></button>
+                            <button className="modal-close" style={{ cursor: 'pointer' }} onClick={() => { setShowNewTaskModal(false); setSelectedTemplateId(null); setPendingSubtarefas([]); setTemplateSearch(''); }}><X size={16} /></button>
                         </div>
                         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {/* Seletor de Template */}
+                            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-default)', borderRadius: 10, padding: 12 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                    <Sparkles size={14} style={{ color: 'var(--accent-light)' }} />
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>USAR TEMPLATE</span>
+                                    {selectedTemplateId && (
+                                        <button onClick={() => { setSelectedTemplateId(null); setPendingSubtarefas([]); }} style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                            Limpar
+                                        </button>
+                                    )}
+                                </div>
+                                {!selectedTemplateId ? (
+                                    <>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="Buscar template..."
+                                            value={templateSearch}
+                                            onChange={e => setTemplateSearch(e.target.value)}
+                                            style={{ marginBottom: 8, fontSize: 12 }}
+                                        />
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                            {taskTemplates
+                                                .filter(t => t.nome.toLowerCase().includes(templateSearch.toLowerCase()))
+                                                .map(t => (
+                                                    <button key={t.id} onClick={() => {
+                                                        setSelectedTemplateId(t.id);
+                                                        setNewTask(prev => ({ ...prev, titulo: prev.titulo || t.nome, descricao: prev.descricao || (t.descricao ?? '') }));
+                                                        setPendingSubtarefas((t.subtarefas ?? []).sort((a, b) => a.ordem - b.ordem).map(s => s.titulo));
+                                                    }} style={{
+                                                        fontSize: 12, padding: '4px 10px', borderRadius: 20,
+                                                        background: 'var(--accent-muted)', color: 'var(--accent-light)',
+                                                        border: '1px solid var(--accent-muted)', cursor: 'pointer'
+                                                    }}>
+                                                        {t.nome}
+                                                    </button>
+                                                ))
+                                            }
+                                            {taskTemplates.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Nenhum template disponível</span>}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-light)', marginBottom: 8 }}>
+                                            {taskTemplates.find(t => t.id === selectedTemplateId)?.nome}
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                            {pendingSubtarefas.map((sub, i) => (
+                                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 16, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+                                                    <input
+                                                        type="text"
+                                                        value={sub}
+                                                        onChange={e => setPendingSubtarefas(prev => prev.map((s, idx) => idx === i ? e.target.value : s))}
+                                                        style={{ flex: 1, fontSize: 12, background: 'transparent', border: 'none', borderBottom: '1px solid var(--border-default)', color: 'var(--text-primary)', padding: '2px 4px', outline: 'none' }}
+                                                    />
+                                                    <button onClick={() => setPendingSubtarefas(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1 }}>×</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                             <div>
                                 <label className="form-label">Título *</label>
                                 <input type="text" className="form-input" value={newTask.titulo || ''} onChange={e => setNewTask({ ...newTask, titulo: e.target.value })} placeholder="Ex: Implementar relatório mensal" />
@@ -1367,7 +1623,7 @@ export default function OperacionalPage() {
                             </div>
                             {taskFormError && <div style={{ color: '#EF4444', fontSize: 13, background: 'rgba(239, 68, 68, 0.1)', padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'center', marginTop: 16 }}>{taskFormError}</div>}
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
-                                <button className="btn btn-secondary" style={{ cursor: 'pointer' }} onClick={() => { setShowNewTaskModal(false); setTaskFormError(''); }}>Cancelar</button>
+                                <button className="btn btn-secondary" style={{ cursor: 'pointer' }} onClick={() => { setShowNewTaskModal(false); setTaskFormError(''); setSelectedTemplateId(null); setPendingSubtarefas([]); setTemplateSearch(''); }}>Cancelar</button>
                                 <button className="btn btn-primary" style={{ cursor: 'pointer' }} onClick={handleCreateTask}>Criar Tarefa</button>
                             </div>
                         </div>
