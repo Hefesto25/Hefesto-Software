@@ -2007,7 +2007,7 @@ export default function FinanceiroPage() {
                                             <label className="form-label">Cliente *</label>
                                             <input type="text" className="form-input" value={cobrancaForm.cliente_nome || ''} onChange={e => setCobrancaForm(p => ({ ...p, cliente_nome: e.target.value }))} placeholder="Nome do cliente" list="clientes-list" />
                                             <datalist id="clientes-list">
-                                                {clients.map(c => <option key={c.id} value={c.nome} />)}
+                                                {clients.map(c => <option key={c.id} value={c.name} />)}
                                             </datalist>
                                         </div>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
