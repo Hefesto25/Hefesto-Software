@@ -87,7 +87,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                     schema: 'public',
                     table: 'notificacoes',
                 },
-                (payload) => {
+                (payload: any) => {
                     const newNotif = payload.new as Notification;
                     // Filter client-side — server-side filter on non-PK columns
                     // can be unreliable with DEFAULT replica identity

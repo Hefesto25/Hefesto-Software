@@ -129,7 +129,7 @@ export default function ChatPage() {
                 schema: 'public',
                 table: 'mensagens',
                 filter: `canal_id=eq.${activeCanalId}`,
-            }, async (payload) => {
+            }, async (payload: any) => {
                 const { data } = await supabase
                     .from('mensagens')
                     .select('*, autor:usuarios!autor_id(id, nome, email, foto_url)')
@@ -147,7 +147,7 @@ export default function ChatPage() {
                 schema: 'public',
                 table: 'mensagens',
                 filter: `canal_id=eq.${activeCanalId}`,
-            }, (payload) => {
+            }, (payload: any) => {
                 setMensagens((prev: Mensagem[]) => prev.map(m =>
                     m.id === payload.new.id ? { ...m, ...payload.new } : m
                 ));
@@ -166,7 +166,7 @@ export default function ChatPage() {
                 schema: 'public',
                 table: 'dm_mensagens',
                 filter: `dm_id=eq.${activeDMId}`,
-            }, async (payload) => {
+            }, async (payload: any) => {
                 const { data } = await supabase
                     .from('dm_mensagens')
                     .select('*, autor:usuarios!autor_id(id, nome, email, foto_url)')
@@ -184,7 +184,7 @@ export default function ChatPage() {
                 schema: 'public',
                 table: 'dm_mensagens',
                 filter: `dm_id=eq.${activeDMId}`,
-            }, (payload) => {
+            }, (payload: any) => {
                 setDMMensagens((prev: DMMensagem[]) => prev.map(m =>
                     m.id === payload.new.id ? { ...m, ...payload.new } : m
                 ));
