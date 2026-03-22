@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useUsuarios, createNotificationIfEnabled, useClients, useSubtarefas, useTodasSubtarefas, addSubtarefa, toggleSubtarefa, removeSubtarefa, useTaskTemplates, addTaskTemplate, updateTaskTemplate, archiveTaskTemplate } from '@/lib/hooks';
+import { useOperationalTasks, updateOperationalTask, addOperationalTask, removeOperationalTask, useUsuarios, createNotificationIfEnabled, sendAssigneeNotificationsAndCalendar, useClients, useSubtarefas, useTodasSubtarefas, addSubtarefa, toggleSubtarefa, removeSubtarefa, useTaskTemplates, addTaskTemplate, updateTaskTemplate, archiveTaskTemplate } from '@/lib/hooks';
 import { useAuth } from '../contexts/AuthContext';
 import { Activity, Clock, CheckCircle2, LayoutDashboard, List, PieChart, Plus, Search as SearchIcon, Eye, Users, ChevronLeft, Trash2, X, Calendar, ChevronRight, GripVertical, Sparkles } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell } from 'recharts';
@@ -628,6 +628,14 @@ export default function OperacionalPage() {
             return;
         }
         try {
+            // Resolve responsavel UUID from name for responsaveis_ids
+            const assignedMember = newTask.responsavel_id
+                ? teamMembers.find(m => m.name === newTask.responsavel_id)
+                : undefined;
+            const responsaveisIds = assignedMember ? [assignedMember.id] : [];
+
+            const participantesIds = newTask.participantes_ids || [];
+
             const created = await addOperationalTask({
                 titulo: newTask.titulo,
                 descricao: newTask.descricao || '',
@@ -638,6 +646,8 @@ export default function OperacionalPage() {
                 tipo: newTask.tipo || 'manual',
                 cliente_nome: newTask.cliente_nome || '',
                 responsavel_id: newTask.responsavel_id || undefined,
+                responsaveis_ids: responsaveisIds,
+                participantes_ids: participantesIds,
                 status: 'A Fazer',
                 origem: 'manual',
             });
@@ -648,19 +658,21 @@ export default function OperacionalPage() {
             }
             setTasksData([...tasks, created]);
 
-            // Notify assigned user
-            if (created.responsavel_id) {
-                const assignedMember = teamMembers.find(m => m.name === created.responsavel_id);
-                if (assignedMember) {
-                    createNotificationIfEnabled(
-                        assignedMember.id,
-                        'tarefa_atribuida',
-                        'Nova tarefa atribuída',
-                        `Você foi atribuído à tarefa '${created.titulo}' por ${user?.nome}.`,
-                        '/operacional',
-                        'operacional'
-                    ).catch(console.error);
-                }
+            // Notify responsavel + all participants (deduped, skip current user)
+            const toNotify = [...new Set([
+                ...(assignedMember ? [assignedMember.id] : []),
+                ...participantesIds,
+            ])].filter(id => id !== user?.id);
+
+            if (toNotify.length > 0) {
+                sendAssigneeNotificationsAndCalendar(
+                    toNotify,
+                    created.titulo,
+                    'Operacional',
+                    created.id,
+                    created.data_inicio,
+                    created.data_termino
+                ).catch(console.error);
             }
 
             setShowNewTaskModal(false);
@@ -699,19 +711,38 @@ export default function OperacionalPage() {
             });
             setTasksData(tasks.map(t => t.id === updated.id ? updated : t));
 
-            // Notify if responsavel changed
+            // Collect IDs to notify: new responsavel + newly added participants
+            const toNotifyEdit: string[] = [];
+
+            // Responsavel changed — update responsaveis_ids and queue notification
             if (editTaskForm.responsavel_id && editTaskForm.responsavel_id !== originalTask?.responsavel_id) {
                 const assignedMember = teamMembers.find(m => m.name === editTaskForm.responsavel_id);
                 if (assignedMember) {
-                    createNotificationIfEnabled(
-                        assignedMember.id,
-                        'tarefa_atribuida',
-                        'Tarefa atribuída a você',
-                        `Você foi atribuído à tarefa '${updated.titulo}' por ${user?.nome}.`,
-                        '/operacional',
-                        'operacional'
-                    ).catch(console.error);
+                    const prevIds = (originalTask?.responsaveis_ids || []).filter(id => id !== assignedMember.id);
+                    await updateOperationalTask(updated.id, {
+                        responsaveis_ids: [...prevIds, assignedMember.id],
+                    }).catch(console.error);
+                    toNotifyEdit.push(assignedMember.id);
                 }
+            }
+
+            // Newly added participants (in new list but not in original)
+            const prevParts = originalTask?.participantes_ids || [];
+            const newParts = editTaskForm.participantes_ids || [];
+            const addedParts = newParts.filter(id => !prevParts.includes(id));
+            toNotifyEdit.push(...addedParts);
+
+            // Send notifications (deduped, skip current user)
+            const uniqueToNotify = [...new Set(toNotifyEdit)].filter(id => id !== user?.id);
+            if (uniqueToNotify.length > 0) {
+                sendAssigneeNotificationsAndCalendar(
+                    uniqueToNotify,
+                    updated.titulo,
+                    'Operacional',
+                    updated.id,
+                    updated.data_inicio,
+                    updated.data_termino
+                ).catch(console.error);
             }
 
             setShowEditTaskModal(false);

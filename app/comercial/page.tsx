@@ -35,6 +35,7 @@ import LossLeadModal from './LossLeadModal';
 import LeadsLostTab from './LeadsLostTab';
 
 const MONTHS = [
+    { value: '00', label: 'Ano completo' },
     { value: '01', label: 'Janeiro' },
     { value: '02', label: 'Fevereiro' },
     { value: '03', label: 'Março' },
@@ -52,6 +53,7 @@ const MONTHS = [
 const STAGES = [
     { id: 'prospeccao', label: 'Prospecção', color: '#8B5CF6' },
     { id: 'diagnostico', label: 'Diagnóstico', color: '#3B82F6' },
+    { id: 'proposta_comercial', label: 'Proposta Comercial', color: '#EC4899' },
     { id: 'negociacao', label: 'Negociação', color: '#F59E0B' },
     { id: 'fechado', label: 'Fechado', color: '#10B981' },
     { id: 'perdido', label: 'Perdido', color: '#EF4444' }
@@ -562,7 +564,9 @@ export default function ComercialPage() {
             const d = new Date(dateStr);
             const m = String(d.getMonth() + 1).padStart(2, '0');
             const y = String(d.getFullYear());
-            return m === filterMonth && y === filterYear;
+            if (y !== filterYear) return false;
+            if (filterMonth === '00') return true; // Ano completo
+            return m === filterMonth;
         });
     }, [deals, filterMonth, filterYear]);
 
@@ -625,7 +629,10 @@ export default function ComercialPage() {
 
         return Object.entries(acc)
             .map(([name, stats]) => {
-                const currentFilterQuarter = `T${Math.floor((Number(filterMonth === 'Todos' ? (new Date().getMonth() + 1).toString().padStart(2, '0') : filterMonth) - 1) / 3) + 1}`;
+                const effectiveMonth = (filterMonth === '00' || filterMonth === 'Todos')
+                    ? String(new Date().getMonth() + 1).padStart(2, '0')
+                    : filterMonth;
+                const currentFilterQuarter = `T${Math.floor((Number(effectiveMonth) - 1) / 3) + 1}`;
                 // Prioritize Monthly Goal, fallback to Trimestral, fallback to Anual / 12 (simplified)
                 let metaVal = 0;
                 const mGoal = goals.find(g => g.seller_name === name && g.month === filterMonth && g.year === filterYear);
@@ -744,12 +751,23 @@ export default function ComercialPage() {
     }, [deals, goals]);
 
     // Gráfico 3: Funil de Conversão com Taxa de Conversão entre Etapas
+    // Um deal na etapa N implica que passou por todas as etapas anteriores (inclusive se pulou alguma).
+    // Por isso, usamos contagem cumulativa: cumulativeCount[i] = deals cuja etapa atual está em funnelStages[i] ou posterior.
     const funnelStages = STAGES.filter(s => s.id !== 'perdido');
+    const stageOrder = funnelStages.map(s => s.id);
     const funnelData = funnelStages.map((stage, idx) => {
+        // Deals atualmente nessa etapa (para exibição no rótulo)
         const count = filteredDeals.filter(d => d.stage === stage.id).length;
-        const prevCount = idx > 0 ? filteredDeals.filter(d => d.stage === funnelStages[idx - 1].id).length : 0;
-        const conversionRate = idx > 0 && prevCount > 0 ? Math.round((count / prevCount) * 100) : null;
-        return { name: stage.label, count, fill: stage.color, conversionRate };
+        // Deals que chegaram até essa etapa ou além (excluindo perdidos)
+        const reachedStages = stageOrder.slice(idx);
+        const cumulativeCount = filteredDeals.filter(d => reachedStages.includes(d.stage)).length;
+        const prevCumulative = idx > 0
+            ? filteredDeals.filter(d => stageOrder.slice(idx - 1).includes(d.stage)).length
+            : 0;
+        const conversionRate = idx > 0 && prevCumulative > 0
+            ? Math.round((cumulativeCount / prevCumulative) * 100)
+            : null;
+        return { name: stage.label, count, cumulativeCount, fill: stage.color, conversionRate };
     });
 
     // Feedback summary per client for CRM table: counts per type (by client ID)
@@ -1018,18 +1036,7 @@ export default function ComercialPage() {
 
                         await updateDeal(deal.id, { stage: stageId, data_entrada_etapa: updatedDeal.data_entrada_etapa });
 
-                        // --- GATILHOS OPERACIONAIS --- //
-                        if (oldStage === 'diagnostico' && stageId === 'negociacao') {
-                            await addOperationalTask({
-                                titulo: `Realizar Prévia — ${deal.company}`,
-                                tipo: 'previa',
-                                status: 'A Fazer',
-                                origem: 'comercial_automatico',
-                                negocio_id: deal.id,
-                                cliente_nome: deal.company
-                            });
-                            showToast(`Tarefa criada no Operacional: Realizar Prévia para ${deal.company}`);
-                        }
+                        // Automações operacionais removidas conforme solicitação.
                     } catch (e) {
                         console.error('Erro ao atualizar etapa:', e);
                         setDealsData(deals); // Revert
@@ -1236,7 +1243,7 @@ export default function ComercialPage() {
                                 ? Math.round((totalFechados / (totalAtivos + totalFechados + totalPerdidos)) * 100)
                                 : 0;
                             const valorPipeline = abertos.reduce((s, d) => s + d.value, 0);
-                            const maxCount = Math.max(...funnelData.map(s => s.count), 1);
+                            const maxCount = Math.max(...funnelData.map(s => s.cumulativeCount), 1);
 
                             return (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -1290,7 +1297,7 @@ export default function ComercialPage() {
 
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                                 {funnelData.map((stage, idx) => {
-                                                    const widthPct = Math.max((stage.count / maxCount) * 100, 6);
+                                                    const widthPct = Math.max((stage.cumulativeCount / maxCount) * 100, 6);
                                                     const isBottleneck = stage.conversionRate !== null && stage.conversionRate < 30;
                                                     return (
                                                         <div key={stage.name}>

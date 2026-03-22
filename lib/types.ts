@@ -43,7 +43,7 @@ export interface Deal {
     title: string;
     company: string;
     value: number;
-    stage: 'prospeccao' | 'diagnostico' | 'negociacao' | 'fechado' | 'perdido';
+    stage: 'prospeccao' | 'diagnostico' | 'proposta_comercial' | 'negociacao' | 'fechado' | 'perdido';
     assignee: string;
     assignee_color: string;
     date: string;
@@ -162,25 +162,6 @@ export interface DMMensagem {
     };
 }
 
-export interface FinancialData {
-    id: string;
-    month: string;
-    receita: number;
-    custos: number;
-    despesas: number;
-    lucro_bruto: number;
-    lucro_liquido: number;
-    sort_order: number;
-    created_at?: string;
-}
-
-export interface ExpenseCategory {
-    id: string;
-    name: string;
-    value: number;
-    color: string;
-    created_at?: string;
-}
 
 export interface FinancialTransaction {
     id: string;

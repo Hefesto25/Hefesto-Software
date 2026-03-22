@@ -73,7 +73,7 @@ export default function MinhasTarefasPage() {
         const tasks: UnifiedTask[] = [];
 
         opTasks.forEach(t => {
-            const isResp = t.responsavel_id === user.id || t.responsaveis_ids?.includes(user.id);
+            const isResp = t.responsavel_id === user.id || t.responsavel_id === user.nome || t.responsaveis_ids?.includes(user.id);
             const isPart = t.participantes_ids?.includes(user.id);
             if (isResp || isPart) {
                 tasks.push({

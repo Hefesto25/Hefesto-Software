@@ -5,8 +5,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import type {
     TeamMember, Contact, Deal, Task,
-    Canal, CanalParticipante, Mensagem, DM, DMMensagem, FinancialData,
-    ExpenseCategory, FinancialGoal,
+    Canal, CanalParticipante, Mensagem, DM, DMMensagem,
+    FinancialGoal,
     FinancialType, FinancialCategory, BudgetPlan,
     FinancialTransaction, SellerGoal, OperationalTask, SubtarefaOperacional,
     ClientCRM, MeetingCRM, FeedbackCRM,
@@ -28,7 +28,7 @@ import type {
     DiretorioFerramentaPredefinida,
     BankImport, BankImportTransaction,
     LeadLossRecord,
-    TaskTemplate, TaskTemplateSubtarefa,
+    TaskTemplate,
     AsaasCobranca
 } from './types';
 import type { ParsedTransaction } from './bankParser';
@@ -867,14 +867,6 @@ export async function uploadDMFile(file: File, dmId: string) {
 }
 
 // Financial
-export function useFinancialData() {
-    return useSupabaseTable<FinancialData>('financial_data', { column: 'sort_order', ascending: true });
-}
-
-export function useExpenseCategories() {
-    return useSupabaseTable<ExpenseCategory>('expense_categories');
-}
-
 export function useFinancialTransactions() {
     return useSupabaseTable<FinancialTransaction>('financial_transactions', { column: 'data_vencimento', ascending: true });
 }
